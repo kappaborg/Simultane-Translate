@@ -1,14 +1,17 @@
 import { AudioRecorderService } from '@/lib/api/audioRecorderService';
-import { transcribeAudio, translateText as translate } from '@/lib/api/translationService';
+import { transcribeAudio, translateLargeText } from '@/lib/api/translationService';
+import SupportedLanguages from '@/lib/data/languages';
 import { useLocalization } from '@/lib/hooks/useLocalization';
-import { translationSessionService } from '@/lib/services/translationSessionService';
-import { debounce } from '@/lib/utils/helpers';
-import { RecordingState, TranslationResult, TranslationSession } from '@/types';
+import { useTranslation } from '@/lib/hooks/useTranslation';
+import { CopyIcon, SpeakerIcon, TranslateIcon, XMarkIcon } from '@/lib/icons';
+import { checkAudioQuality, optimizeAudioForAPI } from '@/lib/utils/audioUtils';
+import { apiUsageTracker, translationCache } from '@/lib/utils/cacheUtils';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import { MicrophoneIcon, PauseIcon, PlayIcon, ShieldExclamationIcon, StopIcon } from '@heroicons/react/24/solid';
+import { MicrophoneIcon, PauseIcon, ShieldExclamationIcon } from '@heroicons/react/24/solid';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import ExportPanel from './ExportPanel';
-import LanguageSelector from './LanguageSelector';
+import { toast } from 'react-toastify';
+import PermissionHelper from './PermissionHelper';
+import RateLimitHelper from './RateLimitHelper';
 
 // Tarayıcı API'lerini tutan değişkenler
 let SpeechRecognitionConstructor: typeof SpeechRecognition | null = null;
@@ -47,7 +50,8 @@ const checkSpeechRecognitionAvailability = (): { available: boolean; reason?: st
 const PermissionHelper: React.FC<{
   permissionType: 'microphone' | 'speech-recognition';
   onRequestPermission: () => void;
-}> = ({ permissionType, onRequestPermission }) => {
+  onClose: () => void;
+}> = ({ permissionType, onRequestPermission, onClose }) => {
   const { t } = useLocalization();
   
   return (
@@ -85,35 +89,35 @@ const PermissionHelper: React.FC<{
           </div>
         </div>
       </div>
+      <button
+        onClick={onClose}
+        className="mt-3 bg-red-600 hover:bg-red-700 text-white py-1 px-3 text-xs rounded-md inline-flex items-center"
+      >
+        {t('close')}
+      </button>
     </div>
   );
 };
 
 // API Rate Limit Hata Yardımcısı bilgi paneli bileşeni
 const RateLimitHelper: React.FC<{
-  onRetry: () => void;
-  remainingTime?: number;
-}> = ({ onRetry, remainingTime }) => {
+  cooldownEndTime: number;
+  dailyUsage: number;
+  dailyLimit: number;
+  onClose: () => void;
+}> = ({ cooldownEndTime, dailyUsage, dailyLimit, onClose }) => {
   const { t } = useLocalization();
-  const [countDown, setCountDown] = useState(remainingTime || 60);
   
   // Geri sayım efekti
-  useEffect(() => {
-    if (!remainingTime) return;
+  const remainingCooldownTime = useCallback(() => {
+    if (cooldownEndTime <= Date.now()) return '';
     
-    setCountDown(remainingTime);
-    const timer = setInterval(() => {
-      setCountDown(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    const remainingSecs = Math.ceil((cooldownEndTime - Date.now()) / 1000);
+    const mins = Math.floor(remainingSecs / 60);
+    const secs = remainingSecs % 60;
     
-    return () => clearInterval(timer);
-  }, [remainingTime]);
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  }, [cooldownEndTime]);
   
   return (
     <div className="mb-6 bg-yellow-50 dark:bg-yellow-900 p-4 rounded-md">
@@ -126,24 +130,12 @@ const RateLimitHelper: React.FC<{
           <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-200 space-y-2">
             <p>{t('rate_limit_description')}</p>
             
-            {countDown > 0 ? (
-              <p className="font-medium">{t('rate_limit_wait_message', countDown.toString())}</p>
-            ) : (
-              <p>{t('rate_limit_retry_now')}</p>
-            )}
+            <p className="font-medium">{t('rate_limit_wait_message', remainingCooldownTime())}</p>
             
             <button
-              onClick={onRetry}
-              disabled={countDown > 0}
-              className={`mt-3 py-1 px-3 text-xs rounded-md inline-flex items-center ${
-                countDown > 0 
-                  ? 'bg-gray-300 text-gray-600 cursor-not-allowed' 
-                  : 'bg-yellow-600 hover:bg-yellow-700 text-white'
-              }`}
+              onClick={onClose}
+              className="mt-3 py-1 px-3 text-xs rounded-md inline-flex items-center bg-yellow-600 hover:bg-yellow-700 text-white"
             >
-              <span className="mr-1">
-                {countDown > 0 ? `${countDown}s` : ''}
-              </span>
               {t('rate_limit_retry_button')}
             </button>
           </div>
@@ -153,666 +145,784 @@ const RateLimitHelper: React.FC<{
   );
 };
 
-const TranslationPanel: React.FC = () => {
-  const { t, locale } = useLocalization();
+export const TranslationPanel: React.FC = () => {
+  const { t, locale, changeLanguage } = useTranslation();
+  const { t: localizationT } = useLocalization();
   
   // Configuration and state
   const [sourceLanguage, setSourceLanguage] = useState('en');
-  const [targetLanguage, setTargetLanguage] = useState('es');
-  const [transcript, setTranscript] = useState('');
+  const [targetLanguage, setTargetLanguage] = useState('tr');
+  const [sourceText, setSourceText] = useState('');
+  const [targetText, setTargetText] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
-  const [translation, setTranslation] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [recordingState, setRecordingState] = useState<RecordingState>('inactive');
-  const [isAdvancedMode, setIsAdvancedMode] = useState(false);
-  const [currentSession, setCurrentSession] = useState<TranslationSession | null>(null);
-  const [browserSupported, setBrowserSupported] = useState(true); // Default to true to avoid hydration mismatch
+  const [confidence, setConfidence] = useState(0);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [audioURL, setAudioURL] = useState<string | null>(null);
   const [showPermissionHelper, setShowPermissionHelper] = useState(false);
-  const [permissionType, setPermissionType] = useState<'microphone' | 'speech-recognition'>('microphone');
+  const [permissionType, setPermissionType] = useState<'mic' | 'speech'>('mic');
   const [showRateLimitHelper, setShowRateLimitHelper] = useState(false);
-  const [rateLimitCountdown, setRateLimitCountdown] = useState<number | undefined>(undefined);
-  const [lastRecordedBlob, setLastRecordedBlob] = useState<Blob | null>(null);
-  
+  const [apiCooldownEndTime, setApiCooldownEndTime] = useState(0);
+
   // Refs
-  const audioRecorder = useRef<AudioRecorderService | null>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const audioRecorderRef = useRef<AudioRecorderService | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceLangSelectRef = useRef<HTMLSelectElement>(null);
+  const targetLangSelectRef = useRef<HTMLSelectElement>(null);
+  const isTranscribing = useRef<boolean>(false);
+  const isRecognitionActive = useRef<boolean>(false);
+  const lastRecognitionRestart = useRef<number>(0);
   
-  // Check browser support for speech recognition on client-side only
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const speechRecognitionCheck = checkSpeechRecognitionAvailability();
-      const supported = speechRecognitionCheck.available;
-      
-      setBrowserSupported(supported);
-      
-      // Eğer API destekleniyor ama güvenlik nedeniyle kullanılamıyorsa
-      if (!supported && speechRecognitionCheck.reason === 'not-secure') {
-        setError(t('browser_https_required', 'Ses tanıma özelliği yalnızca HTTPS üzerinden kullanılabilir. Lütfen HTTPS bağlantısı kullanın.'));
-      }
-    }
+  // API Kullanım durumunu gösteren bilgiler
+  const [apiUsageInfo, setApiUsageInfo] = useState({
+    dailyRequests: 0,
+    monthlyRequests: 0,
+    dailyRemaining: 0,
+  });
+
+  // Update API usage information
+  const updateApiUsageInfo = useCallback(() => {
+    setApiUsageInfo({
+      dailyRequests: apiUsageTracker.getDailyRequests(),
+      monthlyRequests: apiUsageTracker.getMonthlyRequests(),
+      dailyRemaining: apiUsageTracker.getRemainingDailyRequests(),
+    });
   }, []);
-  
-  // Effect to initialize audioRecorder
+
+  // Bileşen yüklendiğinde API kullanım bilgilerini güncelle
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      audioRecorder.current = new AudioRecorderService();
-    }
+    updateApiUsageInfo();
     
-    // Clean up on unmount
-    return () => {
-      if (speechRecognitionInstance) {
-        (speechRecognitionInstance as any).stop();
-      }
-      
-      if (audioRecorder.current) {
-        audioRecorder.current.stopRecording();
-      }
-      
-      // End and save session if active
-      if (currentSession) {
-        translationSessionService.endSession(currentSession);
+    // Önbelleği temizleme işlemi (30 günden eski girişleri)
+    const cleanCache = async () => {
+      try {
+        await translationCache.cleanExpired();
+      } catch (err) {
+        console.warn('Önbellek temizleme hatası:', err);
       }
     };
+    
+    cleanCache();
+  }, [updateApiUsageInfo]);
+
+  // Initialize the audio recorder when the component mounts
+  useEffect(() => {
+    audioRecorderRef.current = new AudioRecorderService();
+    
+    // Web Audio API için AudioContext oluştur
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContext) {
+        audioContextRef.current = new AudioContext();
+      }
+    } catch (err) {
+      console.warn('AudioContext oluşturulamadı:', err);
+    }
+    
+    // Tarayıcı kapatıldığında kaynakları temizle
+    const handleUnload = () => {
+      cleanupRecognition();
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(console.error);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      handleUnload();
+    };
   }, []);
-  
-  // Handle speech recognition result
-  const handleSpeechResult = useCallback((event: SpeechRecognitionEvent) => {
-    const result = event.results[event.results.length - 1];
-    const text = result[0].transcript;
-    setTranscript(text);
-    
-    // If this is a final result, translate it
-    if (result.isFinal) {
-      translateText(text);
-    }
-  }, [sourceLanguage, targetLanguage]);
-  
-  // Debounced translation to avoid too many API calls
-  const debouncedTranslate = useRef(
-    debounce((text: string) => translateText(text), 800)
-  ).current;
-  
-  // Translate the given text
-  const translateText = async (text: string) => {
-    if (!text || text.trim() === '') return;
-    
-    try {
-      setIsTranslating(true);
-      
-      // Call the real translation API through our service
-      const result = await translate(text, sourceLanguage, targetLanguage);
-      setTranslation(result.translatedText);
-      
-      // Add to current session if one exists
-      if (currentSession) {
-        const translationResult: Omit<TranslationResult, 'id' | 'timestamp'> = {
-          originalText: text,
-          translatedText: result.translatedText,
-          sourceLanguage,
-          targetLanguage,
-          confidence: result.confidence || 0.85,
-          duration: 500
-        };
-        
-        const updatedSession = translationSessionService.addTranslation(
-          currentSession,
-          translationResult
-        );
-        
-        setCurrentSession(updatedSession);
-        translationSessionService.saveSession(updatedSession);
-      }
-      
-      setIsTranslating(false);
-      
-    } catch (err) {
-      setError(t('translation_error', err instanceof Error ? err.message : String(err)));
-      setIsTranslating(false);
-    }
-  };
-  
-  // Extract remaining time from error message if available
-  const extractRemainingTime = (errorMsg: string): number | undefined => {
-    const match = errorMsg.match(/Lütfen (\d+) saniye daha bekleyin/);
-    if (match && match[1]) {
-      return parseInt(match[1], 10);
-    }
-    return undefined;
-  };
-  
-  // Function to process audio blobs for advanced mode
-  const processAudioForAdvancedMode = async (blob: Blob) => {
-    try {
-      // Save the blob for retry capability
-      setLastRecordedBlob(blob);
-      
-      setIsTranslating(true);
-      setError(null); // Clear previous errors
-      setShowRateLimitHelper(false); // Hide any previous rate limit helper
-      
-      // Temporary message to inform user about processing
-      setTranscript(t('processing_audio'));
-      
-      // Use our transcription service to transcribe the audio
-      const audioFile = new File([blob], 'recording.webm', { type: 'audio/webm' });
-      
+
+  // Function to clean up SpeechRecognition resources
+  const cleanupRecognition = useCallback(() => {
+    if (recognitionRef.current) {
       try {
-        // Kullanıcıya transcription işlemi hakkında bilgi ver
-        setTranscript(t('processing_audio'));
-        
-        // Transkripsiyonu dene
-        const transcription = await transcribeAudio(audioFile, sourceLanguage);
-        
-        // Transcription result is now an object, use the text property
-        setTranscript(transcription.text);
-        
-        // Çeviri işlemi başladığında kullanıcıya bildir
-        setTranslation(t('translating'));
-        
-        // Now translate the transcribed text
-        await translateText(transcription.text);
-      } catch (err: any) {
-        // API rate limit hatası kontrolü
-        if (err.message && err.message.includes('API istek limiti aşıldı')) {
-          // Check if the error message contains a countdown time
-          const countdown = extractRemainingTime(err.message);
-          if (countdown) {
-            setRateLimitCountdown(countdown);
-          }
-          
-          setShowRateLimitHelper(true);
-          setError(`${t('rate_limit_error', 'OpenAI API istek limiti aşıldı. Lütfen bekleyin ve tekrar deneyin.')}`);
-        } else {
-          // Display API error message directly
-          setError(`${err instanceof Error ? err.message : String(err)}`);
-        }
-        setTranscript(""); // Clear transcript on error
-        setIsTranslating(false);
-        return;
+        isRecognitionActive.current = false;
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.onend = null;
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+        console.log('SpeechRecognition kaynakları temizlendi');
+      } catch (error) {
+        console.error('SpeechRecognition temizleme hatası:', error);
       }
-      
-    } catch (err) {
-      setError(t('audio_processing_error', err instanceof Error ? err.message : String(err)));
-      setIsTranslating(false);
     }
-  };
-  
-  // Retry last transcription attempt
-  const handleRetryTranscription = useCallback(() => {
-    if (lastRecordedBlob) {
-      // Tekrar işleme
-      processAudioForAdvancedMode(lastRecordedBlob);
-    }
-  }, [lastRecordedBlob]);
-  
-  // Mikrofon izni iste ve erişim durumunu kontrol et
-  const requestMicrophonePermission = async (): Promise<boolean> => {
+  }, []);
+
+  // Request microphone permission
+  const requestMicrophonePermission = useCallback(async (): Promise<boolean> => {
     try {
-      // Tarayıcıda değilsek hemen false döndür
-      if (typeof navigator === 'undefined' || !navigator.mediaDevices) {
+      // Check if navigator.mediaDevices is available
+      if (!navigator.mediaDevices) {
+        console.error('mediaDevices API kullanılamıyor');
+        setErrorMessage(t('speech_recognition_not_available'));
         return false;
       }
 
-      // Mevcut izin durumunu kontrol et (varsa)
+      // Check if permission is already granted
       if (navigator.permissions && navigator.permissions.query) {
-        try {
-          const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-          if (permissionStatus.state === 'granted') {
-            return true;
-          } else if (permissionStatus.state === 'denied') {
-            setError(t('speech_recognition_error_mic_denied'));
-            return false;
-          }
-          // 'prompt' durumunda devam et ve izin iste
-        } catch (err) {
-          // Bazı tarayıcılar permissions API'yi desteklemez, bu durumda doğrudan izin isteyeceğiz
-          console.log('Permissions API not fully supported, proceeding to request access directly');
+        const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        
+        if (result.state === 'granted') {
+          return true;
+        } else if (result.state === 'denied') {
+          setPermissionType('mic');
+          setShowPermissionHelper(true);
+          setErrorMessage(t('speech_recognition_error_mic_denied'));
+          return false;
         }
       }
 
-      // Kullanıcıdan açık şekilde mikrofon erişimi iste
-      // Bu, kullanıcının izin vermesi için tarayıcı izin isteğini tetikler
+      // Request microphone permission
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      // İzin verildi, stream'i kapat (zaten amacımız sadece izin istemekti)
+      // Stop the stream immediately after permission is granted
       stream.getTracks().forEach(track => track.stop());
+      
       return true;
-    } catch (error) {
-      console.error('Microphone permission error:', error);
-      setError(t('speech_recognition_error_mic_denied'));
+    } catch (error: any) {
+      console.error('Mikrofon erişim hatası:', error);
+      
+      // Set specific error message based on the error
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        setPermissionType('mic');
+        setShowPermissionHelper(true);
+        setErrorMessage(t('speech_recognition_error_mic_denied'));
+      } else {
+        setErrorMessage(t('speech_recognition_error_not_allowed'));
+      }
+      
       return false;
     }
-  };
+  }, [t]);
 
-  // Error handling helper function
-  const handleRecognitionError = useCallback((errorType: string, errorMsg: string) => {
-    console.error('Speech Recognition Error:', errorType);
-    setError(errorMsg);
+  // Check speech recognition availability
+  const checkSpeechRecognitionAvailability = useCallback((): boolean => {
+    // Check for HTTPS or localhost
+    const isSecureContext = window.location.protocol === 'https:' || 
+                          window.location.hostname === 'localhost';
     
-    // Show permission helper for specific permission errors
-    if (errorType === 'service-not-allowed' || errorType === 'not-allowed') {
-      setPermissionType(errorType === 'service-not-allowed' ? 'speech-recognition' : 'microphone');
-      setShowPermissionHelper(true);
-    } else {
-      setShowPermissionHelper(false);
+    if (!isSecureContext) {
+      setErrorMessage(t('browser_https_required'));
+      return false;
     }
-  }, []);
-  
-  // Request permission helper action
-  const handleRequestPermission = useCallback(async () => {
-    // Request microphone permission again
-    const result = await requestMicrophonePermission();
-    if (result) {
-      setShowPermissionHelper(false);
-      setError(null);
-      // Wait a bit to give browser time to update permissions
-      setTimeout(() => startRecording(), 500);
+    
+    // Check if SpeechRecognition API is available
+    const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      console.error('SpeechRecognition API desteklenmiyor');
+      setErrorMessage(t('speech_recognition_not_available'));
+      return false;
     }
-  }, []);
+    
+    return true;
+  }, [t]);
 
-  // Start recording
-  const startRecording = async () => {
-    setError(null);
-    setTranscript("");
-    setTranslation("");
+  // Handle SpeechRecognition errors
+  const handleRecognitionError = useCallback((event: SpeechRecognitionErrorEvent) => {
+    console.error('SpeechRecognition hatası:', event.error, event.message);
     
-    // Önce SpeechRecognition API'nin kullanılabilirliğini kontrol edelim
-    const speechCheck = checkSpeechRecognitionAvailability();
-    if (!speechCheck.available) {
-      if (speechCheck.reason === 'not-supported') {
-        setError(t('browser_not_supported_description'));
-      } else if (speechCheck.reason === 'not-secure') {
-        setError(t('browser_https_required'));
-      } else {
-        setError(t('speech_recognition_not_available'));
+    // Ses tanıma durduysa kayıt modunu da kapat
+    if (isRecording) {
+      audioRecorderRef.current?.stopRecording();
+      setIsRecording(false);
+    }
+    
+    // Error türüne göre uygun mesajı göster
+    switch (event.error) {
+      case 'not-allowed':
+      case 'permission-denied':
+        setPermissionType('speech');
+        setShowPermissionHelper(true);
+        setErrorMessage(t('speech_recognition_error_mic_denied'));
+        break;
+      case 'no-speech':
+        setErrorMessage(t('speech_recognition_error_no_speech'));
+        break;
+      case 'network':
+        setErrorMessage(t('speech_recognition_error_network'));
+        break;
+      case 'aborted':
+        // Kullanıcı tarafından durdurulduğunda hata gösterme
+        break;
+      default:
+        setErrorMessage(t('speech_recognition_start_error'));
+    }
+    
+    isRecognitionActive.current = false;
+  }, [isRecording, t]);
+
+  // Initial setup for SpeechRecognition
+  const initSpeechRecognition = useCallback(() => {
+    // Önce mevcut tanımayı temizle
+    cleanupRecognition();
+    
+    // SpeechRecognition API'yi kontrol et
+    if (!checkSpeechRecognitionAvailability()) {
+      return false;
+    }
+    
+    try {
+      const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      // Configure recognition settings
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+      
+      // Try to set language based on selected source language
+      try {
+        if (sourceLanguage && sourceLanguage !== 'auto') {
+          recognition.lang = sourceLanguage;
+        }
+      } catch (e) {
+        console.warn('Dil ayarlama hatası:', e);
       }
+      
+      // Handle recognition results
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        const last = event.results.length - 1;
+        const result = event.results[last];
+        const transcript = result[0].transcript;
+        const isFinal = result.isFinal;
+        
+        if (isFinal) {
+          // Final sonuç için kaynak metni güncelle (mevcut metne ekle)
+          setSourceText(prevText => {
+            // Eğer önceki metin boşsa veya nokta ile bitiyorsa
+            const separator = prevText && !prevText.trim().endsWith('.') ? '. ' : ' ';
+            return prevText + (prevText ? separator : '') + transcript;
+          });
+        }
+      };
+      
+      // Handle errors
+      recognition.onerror = handleRecognitionError;
+      
+      // Handle recognition end
+      recognition.onend = () => {
+        console.log('SpeechRecognition bitti');
+        isRecognitionActive.current = false;
+        
+        // Eğer hala kayıt yapılıyorsa ve yeni bir yeniden başlatma zamanlanmadıysa
+        // SpeechRecognition hizmetini yeniden başlat
+        if (isRecording && !isTranscribing.current) {
+          const now = Date.now();
+          // Son yeniden başlatmadan en az 1 saniye geçtiyse
+          if (now - lastRecognitionRestart.current > 1000) {
+            console.log('SpeechRecognition yeniden başlatılıyor...');
+            lastRecognitionRestart.current = now;
+            
+            // Kısa bir gecikme ile yeniden başlat
+            setTimeout(() => {
+              if (isRecording) {
+                try {
+                  recognition.start();
+                  isRecognitionActive.current = true;
+                  console.log('SpeechRecognition yeniden başlatıldı');
+                } catch (error) {
+                  console.error('SpeechRecognition yeniden başlatma hatası:', error);
+                  // Başarısız olursa tamamen yeniden başlat
+                  setIsRecording(false);
+                  startRecording();
+                }
+              }
+            }, 300);
+          }
+        }
+      };
+      
+      recognitionRef.current = recognition;
+      return true;
+    } catch (error) {
+      console.error('SpeechRecognition başlatma hatası:', error);
+      setErrorMessage(t('speech_recognition_start_error'));
+      return false;
+    }
+  }, [cleanupRecognition, checkSpeechRecognitionAvailability, handleRecognitionError, isRecording, sourceLanguage, t]);
+
+  // Start recording function
+  const startRecording = useCallback(async () => {
+    setErrorMessage('');
+    setShowPermissionHelper(false);
+    setShowRateLimitHelper(false);
+    
+    // Check if we're in cooldown period for API rate limits
+    if (apiCooldownEndTime > Date.now()) {
+      setShowRateLimitHelper(true);
+      return;
+    }
+
+    // API kullanım limitlerini kontrol et
+    if (apiUsageTracker.isDailyLimitExceeded()) {
+      setErrorMessage(t('api_rate_limit_exceeded_daily'));
+      setShowRateLimitHelper(true);
       return;
     }
     
     // Mikrofon izni iste
-    const hasMicPermission = await requestMicrophonePermission();
-    if (!hasMicPermission) {
-      return; // Error already set in the function
+    const permissionGranted = await requestMicrophonePermission();
+    if (!permissionGranted) {
+      return;
     }
     
-    // Create a new session if we don't have one
-    if (!currentSession) {
-      const newSession = translationSessionService.createSession(sourceLanguage, targetLanguage);
-      setCurrentSession(newSession);
+    // SpeechRecognition API'yi yapılandır
+    const recognitionInitialized = initSpeechRecognition();
+    if (!recognitionInitialized) {
+      return;
     }
     
-    if (isAdvancedMode) {
-      // Advanced mode - use AudioRecorderService
-      if (audioRecorder.current) {
-        try {
-          audioRecorder.current.startRecording(
-            undefined, // Real-time processing not needed
-            (blob) => processAudioForAdvancedMode(blob)
-          );
-          setRecordingState('recording');
-        } catch (error) {
-          setError(t('microphone_access_denied'));
+    try {
+      // AudioRecorder'ı başlat
+      audioRecorderRef.current?.startRecording();
+      
+      // SpeechRecognition'ı başlat
+      if (recognitionRef.current && !isRecognitionActive.current) {
+        recognitionRef.current.start();
+        isRecognitionActive.current = true;
+        console.log('SpeechRecognition başlatıldı');
+      }
+      
+      // Kayıt durumunu güncelle
+      setIsRecording(true);
+      setTargetText('');
+      setAudioURL(null);
+    } catch (error) {
+      console.error('Kayıt başlatma hatası:', error);
+      setErrorMessage(t('speech_recognition_start_error'));
+      
+      // Hata durumunda kaynakları temizle
+      audioRecorderRef.current?.stopRecording();
+      cleanupRecognition();
+    }
+  }, [cleanupRecognition, initSpeechRecognition, requestMicrophonePermission, t, apiCooldownEndTime]);
+
+  // Stop recording function
+  const stopRecording = useCallback(async () => {
+    setIsRecording(false);
+    setErrorMessage('');
+    
+    // SpeechRecognition API'yi durdur
+    cleanupRecognition();
+    
+    // AudioRecorder'ı durdur ve ses blobunu al
+    try {
+      isTranscribing.current = true;
+      setIsTranslating(true);
+      
+      const audioBlob = await audioRecorderRef.current?.stopRecording();
+      
+      if (!audioBlob) {
+        throw new Error('Ses kaydı alınamadı');
+      }
+      
+      // Ses dosyasının kalitesini kontrol et
+      const qualityCheck = checkAudioQuality(audioBlob);
+      if (qualityCheck.warning) {
+        console.warn(qualityCheck.warning);
+        // Çok küçük ses dosyaları için uyarı
+        if (qualityCheck.tooSmall) {
+          toast.warn(qualityCheck.warning);
+          setIsTranslating(false);
+          isTranscribing.current = false;
+          return;
         }
       }
-    } else {
-      // Basic mode - use Web Speech API
-      if (SpeechRecognitionConstructor) {
-        try {
-          // Önce mevcut instance'ı temizle
-          if (speechRecognitionInstance) {
-            try {
-              (speechRecognitionInstance as any).stop();
-              (speechRecognitionInstance as any).onresult = null;
-              (speechRecognitionInstance as any).onerror = null;
-              (speechRecognitionInstance as any).onend = null;
-            } catch (e) {
-              console.error('Error cleaning up previous instance:', e);
-            }
-            speechRecognitionInstance = null;
-          }
-          
-          // Tip dönüşümü ile tarayıcı API'sını kullanıyoruz
-          speechRecognitionInstance = new SpeechRecognitionConstructor() as any;
-          
-          // Tarayıcı desteğine göre ayarları yapılandır
-          const recognition = speechRecognitionInstance as any;
-          
-          // Non-null assertion ile TypeScript hatasını gideriyoruz
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          recognition.lang = sourceLanguage;
-          recognition.maxAlternatives = 1;
-          
-          // Tarayıcı desteğine göre ek ayarlar
-          if ('serviceURI' in recognition) {
-            // Bu özellik sadece Firefox'ta mevcut, ancak Chrome uyumluluğu için de kontrol ediyoruz
-            // recognition.serviceURI = 'https://...'; // Eğer özel bir hizmet kullanıyorsanız
-          }
-          
-          // SpeechRecognition servisinin durumu için yeni bir takip mekanizması
-          let recognitionActive = false;
-          
-          // Result handling
-          recognition.onresult = handleSpeechResult;
-          
-          // Error handling with detailed logging
-          recognition.onerror = (event: any) => {
-            console.error('Speech Recognition Error Details:', {
-              error: event.error,
-              message: event.message || 'No message provided',
-              eventTime: new Date().toISOString()
-            });
-            
-            if (event.error === 'service-not-allowed' || event.error === 'not-allowed') {
-              handleRecognitionError(
-                event.error, 
-                t(event.error === 'service-not-allowed' 
-                  ? 'speech_recognition_error_not_allowed' 
-                  : 'speech_recognition_error_mic_denied')
-              );
-            } else if (event.error === 'no-speech') {
-              setError(t('speech_recognition_error_no_speech'));
-            } else if (event.error === 'network') {
-              setError(t('speech_recognition_error_network'));
-            } else {
-              setError(t('speech_recognition_error', event.error));
-            }
-            
-            recognitionActive = false;
-          };
-          
-          // On end event, restart if active
-          recognition.onend = () => {
-            console.log('SpeechRecognition ended, active status:', recognitionActive);
-            
-            if (recognitionActive && recordingState === 'recording') {
-              console.log('Attempting to restart recognition service...');
-              try {
-                // SpeechRecognition servisinin yeniden başlatılması
-                recognition.start();
-              } catch (restartError) {
-                console.error('Error restarting recognition:', restartError);
-                setError(t('speech_recognition_start_error'));
-                setRecordingState('inactive');
-              }
-            } else {
-              // Normal bir sonlandırma ise kayıt durumunu güncelle
-              if (recordingState !== 'paused') {
-                setRecordingState('inactive');
-              }
-            }
-          };
-          
-          // Başlatma öncesi son bir kontrol daha
-          console.log('Initializing SpeechRecognition with settings:', {
-            language: sourceLanguage,
-            continuous: true,
-            interimResults: true
-          });
-          
-          try {
-            // Servisin etkinleştirilmiş olduğunu işaretle
-            recognitionActive = true;
-            
-            // Servisi başlat
-            recognition.start();
-            console.log('SpeechRecognition started successfully');
-            
-            // UI'ı güncelle
-            setRecordingState('recording');
-          } catch (startError) {
-            console.error('Speech Recognition Start Error:', startError);
-            recognitionActive = false;
-            setError(t('speech_recognition_start_error'));
-          }
-        } catch (error) {
-          console.error('Speech Recognition Init Error:', error);
-          setError(t('speech_recognition_error', error instanceof Error ? error.message : String(error)));
+      
+      // Ses URL'ini oluştur
+      const audioURL = URL.createObjectURL(audioBlob);
+      setAudioURL(audioURL);
+      
+      // Ses dosyasını API için optimize et
+      let processedAudioBlob = audioBlob;
+      try {
+        processedAudioBlob = await optimizeAudioForAPI(audioBlob);
+      } catch (error) {
+        console.warn('Ses optimizasyonu başarısız, orijinal ses kullanılıyor:', error);
+      }
+      
+      // Ses dosyasını metne dönüştür
+      const transcribeLanguage = sourceLanguage === 'auto' ? undefined : sourceLanguage;
+      const { text } = await transcribeAudio(processedAudioBlob, transcribeLanguage);
+      
+      if (!text || text.trim() === '') {
+        toast.warn(t('no_speech_detected'));
+        setIsTranslating(false);
+        isTranscribing.current = false;
+        return;
+      }
+      
+      setSourceText(text);
+      
+      // Metni tercüme et ve sonuçları göster
+      await translateSourceText(text, sourceLanguage, targetLanguage);
+      
+      // API kullanım bilgilerini güncelle
+      updateApiUsageInfo();
+      
+    } catch (error: any) {
+      console.error('Ses işleme hatası:', error);
+      
+      if (error.message?.includes('API istek limiti aşıldı')) {
+        // Rate limit hatası - cooldown süresi ayarla
+        const cooldownMinutes = 10;
+        const cooldownEndTime = Date.now() + (cooldownMinutes * 60 * 1000);
+        setApiCooldownEndTime(cooldownEndTime);
+        setShowRateLimitHelper(true);
+        setErrorMessage(`${t('api_rate_limit_exceeded')} ${cooldownMinutes} ${t('minutes')}.`);
+      } else {
+        setErrorMessage(error.message || t('transcription_error'));
+      }
+    } finally {
+      setIsTranslating(false);
+      isTranscribing.current = false;
+    }
+  }, [cleanupRecognition, sourceLanguage, targetLanguage, t, updateApiUsageInfo]);
+
+  // Translate the source text
+  const translateSourceText = useCallback(async (
+    text: string,
+    fromLang: string,
+    toLang: string
+  ) => {
+    if (!text || text.trim() === '') {
+      setTargetText('');
+      return;
+    }
+    
+    setIsTranslating(true);
+    setErrorMessage('');
+    
+    try {
+      // Önbellekte çeviri var mı kontrol et
+      try {
+        const cachedTranslation = await translationCache.get(text, fromLang, toLang);
+        if (cachedTranslation) {
+          setTargetText(cachedTranslation.translatedText);
+          setConfidence(cachedTranslation.confidence);
+          setIsTranslating(false);
+          console.log('Çeviri önbellekten alındı');
+          return;
         }
+      } catch (error) {
+        console.warn('Önbellek kontrolü başarısız:', error);
       }
-    }
-  };
-  
-  // Stop recording
-  const stopRecording = () => {
-    if (isAdvancedMode) {
-      if (audioRecorder.current) {
-        audioRecorder.current.stopRecording();
+      
+      // Büyük metinler için bölümlere ayırarak çeviri yap
+      const result = await translateLargeText(text, fromLang, toLang);
+      
+      setTargetText(result.translatedText);
+      setConfidence(result.confidence);
+      
+      // Başarılı çeviriyi önbelleğe kaydet
+      try {
+        await translationCache.set(
+          text,
+          result.translatedText,
+          fromLang,
+          toLang,
+          result.confidence
+        );
+      } catch (error) {
+        console.warn('Çeviri önbelleğe kaydedilemedi:', error);
       }
-    } else {
-      if (speechRecognitionInstance) {
-        (speechRecognitionInstance as any).stop();
+      
+    } catch (error: any) {
+      console.error('Çeviri hatası:', error);
+      
+      if (error.message?.includes('API istek limiti aşıldı')) {
+        // Rate limit hatası - cooldown süresi ayarla
+        const cooldownMinutes = 10;
+        const cooldownEndTime = Date.now() + (cooldownMinutes * 60 * 1000);
+        setApiCooldownEndTime(cooldownEndTime);
+        setShowRateLimitHelper(true);
+        setErrorMessage(`${t('api_rate_limit_exceeded')} ${cooldownMinutes} ${t('minutes')}.`);
+      } else {
+        setErrorMessage(error.message || t('translation_error'));
       }
+    } finally {
+      setIsTranslating(false);
+    }
+  }, []);
+
+  // Handle source text change
+  const handleSourceTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setSourceText(e.target.value);
+  }, []);
+
+  // Handle translate button click
+  const handleTranslateClick = useCallback(() => {
+    translateSourceText(sourceText, sourceLanguage, targetLanguage);
+  }, [sourceText, sourceLanguage, targetLanguage, translateSourceText]);
+
+  // Handle source language change
+  const handleSourceLanguageChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSourceLanguage(e.target.value);
+  }, []);
+
+  // Handle target language change
+  const handleTargetLanguageChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setTargetLanguage(e.target.value);
+  }, []);
+
+  // Swap languages
+  const handleSwapLanguages = useCallback(() => {
+    if (sourceLanguage === 'auto') return;
+    
+    setSourceLanguage(targetLanguage);
+    setTargetLanguage(sourceLanguage);
+    setSourceText(targetText);
+    setTargetText(sourceText);
+    
+    // Select elementlerini de güncelle
+    if (sourceLangSelectRef.current) {
+      sourceLangSelectRef.current.value = targetLanguage;
     }
     
-    setRecordingState('inactive');
-    
-    // Save the completed session if it exists and has translations
-    if (currentSession && currentSession.translations.length > 0) {
-      translationSessionService.endSession(currentSession);
-      // We don't reset currentSession here to allow exporting
+    if (targetLangSelectRef.current) {
+      targetLangSelectRef.current.value = sourceLanguage;
     }
-  };
-  
-  // Pause/resume recording
-  const togglePauseRecording = () => {
-    if (recordingState === 'recording') {
-      if (isAdvancedMode && audioRecorder.current) {
-        audioRecorder.current.pauseRecording();
-      } else if (speechRecognitionInstance) {
-        (speechRecognitionInstance as any).stop();
-      }
-      setRecordingState('paused');
-    } else if (recordingState === 'paused') {
-      if (isAdvancedMode && audioRecorder.current) {
-        audioRecorder.current.resumeRecording();
-      } else if (speechRecognitionInstance) {
-        (speechRecognitionInstance as any).start();
-      }
-      setRecordingState('recording');
+  }, [sourceLanguage, targetLanguage, sourceText, targetText]);
+
+  // Copy text to clipboard
+  const copyToClipboard = useCallback((text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      toast.success(t('text_copied'));
+    }).catch(err => {
+      console.error('Panoya kopyalama hatası:', err);
+      toast.error(t('copy_failed'));
+    });
+  }, [t]);
+
+  // Play audio
+  const playAudio = useCallback(() => {
+    if (audioURL) {
+      const audio = new Audio(audioURL);
+      audio.play().catch(error => {
+        console.error('Ses çalma hatası:', error);
+        toast.error(t('audio_play_error'));
+      });
     }
-  };
-  
-  // Handle language changes
-  const handleSourceLanguageChange = (code: string) => {
-    setSourceLanguage(code);
-    
-    // Update speech recognition language if active
-    if (speechRecognitionInstance && recordingState !== 'inactive') {
-      (speechRecognitionInstance as any).stop();
-      (speechRecognitionInstance as any).lang = code;
-      (speechRecognitionInstance as any).start();
+  }, [audioURL, t]);
+
+  // Clear texts
+  const clearTexts = useCallback(() => {
+    setSourceText('');
+    setTargetText('');
+    if (audioURL) {
+      URL.revokeObjectURL(audioURL);
+      setAudioURL(null);
     }
-    
-    // Update session if active
-    if (currentSession) {
-      const updatedSession = {
-        ...currentSession,
-        sourceLanguage: code
-      };
-      setCurrentSession(updatedSession);
-      translationSessionService.saveSession(updatedSession);
+    setErrorMessage('');
+  }, [audioURL]);
+
+  // Handle clear cache button click
+  const handleClearCache = useCallback(async () => {
+    try {
+      await translationCache.clearCache();
+      toast.success(t('cache_cleared'));
+    } catch (error) {
+      console.error('Önbellek temizleme hatası:', error);
+      toast.error(t('cache_clear_error'));
     }
-  };
-  
-  const handleTargetLanguageChange = (code: string) => {
-    setTargetLanguage(code);
+  }, [t]);
+
+  // Remaining time for API cooldown
+  const remainingCooldownTime = useCallback(() => {
+    if (apiCooldownEndTime <= Date.now()) return '';
     
-    // Update session if active
-    if (currentSession) {
-      const updatedSession = {
-        ...currentSession,
-        targetLanguage: code
-      };
-      setCurrentSession(updatedSession);
-      translationSessionService.saveSession(updatedSession);
-    }
-  };
-  
-  const toggleAdvancedMode = () => {
-    // Can't switch modes while recording
-    if (recordingState !== 'inactive') return;
+    const remainingSecs = Math.ceil((apiCooldownEndTime - Date.now()) / 1000);
+    const mins = Math.floor(remainingSecs / 60);
+    const secs = remainingSecs % 60;
     
-    setIsAdvancedMode(!isAdvancedMode);
-  };
-  
-  // Instead of conditional rendering at the component level, use state to show browser warning
-  if (!browserSupported) {
-    return (
-      <div className="p-6 bg-red-50 dark:bg-red-900 rounded-lg text-center">
-        <h2 className="text-xl font-bold text-red-700 dark:text-red-300 mb-2">
-          {t('browser_not_supported')}
-        </h2>
-        <p className="text-red-600 dark:text-red-200">
-          {t('browser_not_supported_description')}
-        </p>
-      </div>
-    );
-  }
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  }, [apiCooldownEndTime]);
 
   return (
-    <div className="bg-gray-50 dark:bg-gray-900 rounded-lg shadow-lg p-6">
-      <div className="mb-6">
-        <h2 className="text-xl font-bold mb-4">{t('translation_settings')}</h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <LanguageSelector
-            label={t('source_language')}
+    <div className="translation-panel">
+      {/* Source text area */}
+      <div className="translation-box source-box">
+        <div className="language-selector">
+          <select 
             value={sourceLanguage}
             onChange={handleSourceLanguageChange}
-            showDetect={true}
-            disabled={recordingState !== 'inactive'}
-          />
+            ref={sourceLangSelectRef}
+          >
+            <option value="auto">{t('auto_detect')}</option>
+            {Object.entries(SupportedLanguages).map(([code, name]) => (
+              <option key={code} value={code}>{name}</option>
+            ))}
+          </select>
           
-          <LanguageSelector
-            label={t('target_language')}
-            value={targetLanguage}
-            onChange={handleTargetLanguageChange}
-            disabled={recordingState !== 'inactive'}
-          />
-        </div>
-        
-        <div className="mt-4 flex items-center">
-          <label className="flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              className="form-checkbox h-4 w-4 text-blue-600 rounded"
-              checked={isAdvancedMode}
-              onChange={toggleAdvancedMode}
-              disabled={recordingState !== 'inactive'}
-            />
-            <span className="ml-2 text-sm">{t('advanced_mode')}</span>
-          </label>
-          
-          <div className="ml-auto">
-            {recordingState === 'inactive' ? (
-              <button
-                onClick={startRecording}
-                className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md flex items-center"
+          <div className="recording-controls">
+            {isRecording ? (
+              <button 
+                onClick={stopRecording}
+                className="record-button recording"
+                title={t('stop_recording')}
               >
-                <MicrophoneIcon className="h-5 w-5 mr-2" />
-                {t('start_recording')}
+                {isTranslating ? <SpinnerIcon /> : <PauseIcon />}
               </button>
             ) : (
-              <div className="flex space-x-2">
-                <button
-                  onClick={togglePauseRecording}
-                  className="bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-4 rounded-md flex items-center"
-                >
-                  {recordingState === 'recording' ? (
-                    <>
-                      <PauseIcon className="h-5 w-5 mr-2" />
-                      {t('pause')}
-                    </>
-                  ) : (
-                    <>
-                      <PlayIcon className="h-5 w-5 mr-2" />
-                      {t('resume')}
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={stopRecording}
-                  className="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-md flex items-center"
-                >
-                  <StopIcon className="h-5 w-5 mr-2" />
-                  {t('stop')}
-                </button>
-              </div>
+              <button 
+                onClick={startRecording}
+                className="record-button"
+                title={t('start_recording')}
+                disabled={isTranslating}
+              >
+                <MicrophoneIcon />
+              </button>
+            )}
+          </div>
+        </div>
+        
+        <textarea 
+          value={sourceText}
+          onChange={handleSourceTextChange}
+          placeholder={t('enter_source_text')}
+          disabled={isRecording || isTranslating}
+        />
+        
+        <div className="actions">
+          {audioURL && (
+            <button onClick={playAudio} title={t('play_audio')}>
+              <SpeakerIcon />
+            </button>
+          )}
+          
+          <button 
+            onClick={() => copyToClipboard(sourceText)}
+            disabled={!sourceText}
+            title={t('copy_text')}
+          >
+            <CopyIcon />
+          </button>
+          
+          <button 
+            onClick={clearTexts}
+            disabled={!sourceText && !targetText}
+            title={t('clear_text')}
+          >
+            <XMarkIcon />
+          </button>
+        </div>
+      </div>
+      
+      {/* Swap button */}
+      <button 
+        className="swap-button"
+        onClick={handleSwapLanguages}
+        disabled={sourceLanguage === 'auto' || isRecording || isTranslating}
+        title={t('swap_languages')}
+      >
+        ↔
+      </button>
+      
+      {/* Target text area */}
+      <div className="translation-box target-box">
+        <div className="language-selector">
+          <select 
+            value={targetLanguage}
+            onChange={handleTargetLanguageChange}
+            ref={targetLangSelectRef}
+          >
+            {Object.entries(SupportedLanguages).map(([code, name]) => (
+              <option key={code} value={code}>{name}</option>
+            ))}
+          </select>
+          
+          <button 
+            onClick={handleTranslateClick}
+            disabled={!sourceText || isTranslating || isRecording}
+            className="translate-button"
+            title={t('translate')}
+          >
+            {isTranslating ? <SpinnerIcon /> : <TranslateIcon />}
+          </button>
+        </div>
+        
+        <textarea 
+          value={targetText}
+          readOnly 
+          placeholder={t('translation_will_appear_here')}
+        />
+        
+        <div className="actions">
+          <button 
+            onClick={() => copyToClipboard(targetText)}
+            disabled={!targetText}
+            title={t('copy_text')}
+          >
+            <CopyIcon />
+          </button>
+          
+          {/* API Kullanım bilgileri */}
+          <div className="api-usage-info">
+            <span title={t('daily_api_usage')}>
+              {apiUsageInfo.dailyRequests}/{apiUsageInfo.dailyRequests + apiUsageInfo.dailyRemaining}
+            </span>
+            
+            {/* Önbellek temizleme butonu */}
+            <button 
+              onClick={handleClearCache}
+              className="clear-cache-button"
+              title={t('clear_cache')}
+            >
+              🗑️
+            </button>
+            
+            {/* API cooldown süresi */}
+            {apiCooldownEndTime > Date.now() && (
+              <span className="cooldown-timer" title={t('api_cooldown')}>
+                ⏱️ {remainingCooldownTime()}
+              </span>
             )}
           </div>
         </div>
       </div>
       
-      {recordingState !== 'inactive' && (
-        <div className="mb-6 flex items-center">
-          <div className="relative mr-3">
-            <div className="h-4 w-4 bg-red-500 rounded-full animate-pulse"></div>
-          </div>
-          <span className="text-sm font-medium">
-            {recordingState === 'recording' ? t('recording') : t('paused')}
-          </span>
+      {/* Translation confidence */}
+      {confidence > 0 && (
+        <div className="confidence">
+          {t('confidence')}: {Math.round(confidence * 100)}%
         </div>
       )}
       
-      {showRateLimitHelper && (
-        <RateLimitHelper 
-          onRetry={handleRetryTranscription}
-          remainingTime={rateLimitCountdown}
-        />
+      {/* Error message */}
+      {errorMessage && (
+        <div className="error-message">
+          {errorMessage}
+        </div>
       )}
       
+      {/* Permission Helper */}
       {showPermissionHelper && (
         <PermissionHelper 
           permissionType={permissionType}
-          onRequestPermission={handleRequestPermission}
+          onRequestPermission={() => {
+            setShowPermissionHelper(false);
+            requestMicrophonePermission().then(granted => {
+              if (granted) {
+                startRecording();
+              }
+            });
+          }}
+          onClose={() => setShowPermissionHelper(false)}
         />
       )}
       
-      {error && !showPermissionHelper && !showRateLimitHelper && (
-        <div className="mb-6 bg-red-50 dark:bg-red-900 p-4 rounded-md flex items-start">
-          <ExclamationTriangleIcon className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 mr-2 flex-shrink-0" />
-          <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
-        </div>
-      )}
-      
-      {(transcript || translation) && (
-        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-md shadow">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-medium">{t('original_text')}</h3>
-              <span className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">
-                {sourceLanguage}
-              </span>
-            </div>
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
-              <p className="whitespace-pre-wrap">{transcript}</p>
-            </div>
-          </div>
-          
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-md shadow">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-medium">{t('translation')}</h3>
-              <span className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">
-                {targetLanguage}
-              </span>
-            </div>
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
-              {isTranslating ? (
-                <div className="flex items-center justify-center h-20">
-                  <div className="animate-spin h-6 w-6 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-                </div>
-              ) : (
-                <p className="whitespace-pre-wrap">{translation}</p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {currentSession && currentSession.translations.length > 0 && (
-        <ExportPanel 
-          session={currentSession} 
-          className="mt-6"
+      {/* Rate Limit Helper */}
+      {showRateLimitHelper && (
+        <RateLimitHelper
+          cooldownEndTime={apiCooldownEndTime}
+          dailyUsage={apiUsageInfo.dailyRequests}
+          dailyLimit={apiUsageInfo.dailyRequests + apiUsageInfo.dailyRemaining}
+          onClose={() => setShowRateLimitHelper(false)}
         />
       )}
     </div>

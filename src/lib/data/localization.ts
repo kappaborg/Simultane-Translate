@@ -45,7 +45,38 @@ export type LocalizationKey =
   | 'rate_limit_wait_message'
   | 'rate_limit_retry_now'
   | 'rate_limit_retry_button'
-  | 'translating';
+  | 'translating'
+  | 'simultane_translation'
+  | 'swap_languages'
+  | 'clear_text'
+  | 'copy_text'
+  | 'text_copied'
+  | 'copy_failed'
+  | 'stop_recording'
+  | 'play_audio'
+  | 'audio_play_error'
+  | 'enter_source_text'
+  | 'translation_will_appear_here'
+  | 'auto_detect'
+  | 'confidence'
+  | 'no_speech_detected'
+  | 'transcription_error'
+  | 'rate_limit_helper_title'
+  | 'rate_limit_helper_desc'
+  | 'rate_limit_helper_cooldown'
+  | 'rate_limit_helper_recommendations'
+  | 'rate_limit_helper_rec1'
+  | 'rate_limit_helper_rec2'
+  | 'rate_limit_helper_rec3'
+  | 'rate_limit_helper_rec4'
+  | 'api_rate_limit_exceeded'
+  | 'api_rate_limit_exceeded_daily'
+  | 'api_cooldown'
+  | 'daily_api_usage'
+  | 'clear_cache'
+  | 'cache_cleared'
+  | 'cache_clear_error'
+  | 'minutes';
 
 type LocalizationMap = Record<LocalizationKey, string>;
 
@@ -99,7 +130,38 @@ export const localizations: Localizations = {
     rate_limit_wait_message: 'Please wait {0} seconds and try again.',
     rate_limit_retry_now: 'You can try again now.',
     rate_limit_retry_button: 'Retry',
-    translating: 'Translating your text...'
+    translating: 'Translating your text...',
+    simultane_translation: 'Simultaneous Translation',
+    swap_languages: 'Swap languages',
+    clear_text: 'Clear text',
+    copy_text: 'Copy text',
+    text_copied: 'Text copied to clipboard',
+    copy_failed: 'Failed to copy text',
+    stop_recording: 'Stop recording',
+    play_audio: 'Play audio',
+    audio_play_error: 'Error playing audio',
+    enter_source_text: 'Enter text or start recording',
+    translation_will_appear_here: 'Translation will appear here',
+    auto_detect: 'Auto detect',
+    confidence: 'Confidence',
+    no_speech_detected: 'No speech detected. Please try again.',
+    transcription_error: 'Error converting speech to text',
+    rate_limit_helper_title: 'API Usage Limit Reached',
+    rate_limit_helper_desc: 'You have reached the API usage limit. This is in place to prevent abuse and ensure service availability for everyone.',
+    rate_limit_helper_cooldown: 'Cooldown Time Remaining:',
+    rate_limit_helper_recommendations: 'Recommendations:',
+    rate_limit_helper_rec1: 'Wait until the cooldown period ends',
+    rate_limit_helper_rec2: 'Use shorter audio recordings',
+    rate_limit_helper_rec3: 'Type text instead of recording when possible',
+    rate_limit_helper_rec4: 'Use translated content from the cache',
+    api_rate_limit_exceeded: 'API request limit exceeded. Please try again in',
+    api_rate_limit_exceeded_daily: 'Daily API limit exceeded. Please try again tomorrow.',
+    api_cooldown: 'API cooldown time remaining',
+    daily_api_usage: 'Daily API usage',
+    clear_cache: 'Clear translation cache',
+    cache_cleared: 'Translation cache cleared successfully',
+    cache_clear_error: 'Error clearing translation cache',
+    minutes: 'minutes'
   },
   bs: {
     app_title: 'Simultano Prevođenje',
@@ -148,7 +210,38 @@ export const localizations: Localizations = {
     rate_limit_wait_message: 'Pričekajte {0} sekundi i pokušajte ponovo.',
     rate_limit_retry_now: 'Sada možete pokušati ponovo.',
     rate_limit_retry_button: 'Pokušaj ponovo',
-    translating: 'Prevođenje vašeg teksta...'
+    translating: 'Prevođenje vašeg teksta...',
+    simultane_translation: 'Simultani prevod',
+    swap_languages: 'Zamijeni jezike',
+    clear_text: 'Obriši tekst',
+    copy_text: 'Kopiraj tekst',
+    text_copied: 'Tekst kopiran u međuspremnik',
+    copy_failed: 'Nije uspjelo kopiranje teksta',
+    stop_recording: 'Zaustavi snimanje',
+    play_audio: 'Reproduciraj audio',
+    audio_play_error: 'Greška pri reprodukciji zvuka',
+    enter_source_text: 'Unesite tekst ili započnite snimanje',
+    translation_will_appear_here: 'Prijevod će se pojaviti ovdje',
+    auto_detect: 'Automatsko prepoznavanje',
+    confidence: 'Pouzdanost',
+    no_speech_detected: 'Govor nije detektiran. Molimo pokušajte ponovo.',
+    transcription_error: 'Greška pri pretvaranju govora u tekst',
+    rate_limit_helper_title: 'Dostignut limit korištenja API-ja',
+    rate_limit_helper_desc: 'Dostigli ste limit korištenja API-ja. Ovo je postavljeno kako bi se spriječila zloupotreba i osigurala dostupnost usluge za sve.',
+    rate_limit_helper_cooldown: 'Preostalo vrijeme hlađenja:',
+    rate_limit_helper_recommendations: 'Preporuke:',
+    rate_limit_helper_rec1: 'Sačekajte dok period hlađenja ne završi',
+    rate_limit_helper_rec2: 'Koristite kraće audio snimke',
+    rate_limit_helper_rec3: 'Ukucajte tekst umjesto snimanja kada je moguće',
+    rate_limit_helper_rec4: 'Koristite prevedeni sadržaj iz keša',
+    api_rate_limit_exceeded: 'Prekoračeno ograničenje API zahtjeva. Pokušajte ponovo za',
+    api_rate_limit_exceeded_daily: 'Dnevno ograničenje API-ja prekoračeno. Pokušajte ponovo sutra.',
+    api_cooldown: 'Preostalo vrijeme hlađenja API-ja',
+    daily_api_usage: 'Dnevno korištenje API-ja',
+    clear_cache: 'Očisti keš prijevoda',
+    cache_cleared: 'Keš prijevoda uspješno očišćen',
+    cache_clear_error: 'Greška prilikom čišćenja keša prijevoda',
+    minutes: 'minuta'
   },
   tr: {
     app_title: 'Eşzamanlı Çeviri',
@@ -197,7 +290,38 @@ export const localizations: Localizations = {
     rate_limit_wait_message: 'Lütfen {0} saniye bekleyin ve tekrar deneyin.',
     rate_limit_retry_now: 'Şimdi tekrar deneyebilirsiniz.',
     rate_limit_retry_button: 'Tekrar Dene',
-    translating: 'Metniniz çevriliyor...'
+    translating: 'Metniniz çevriliyor...',
+    simultane_translation: 'Eşzamanlı Çeviri',
+    swap_languages: 'Dilleri değiştir',
+    clear_text: 'Metni temizle',
+    copy_text: 'Metni kopyala',
+    text_copied: 'Metin panoya kopyalandı',
+    copy_failed: 'Metin kopyalanamadı',
+    stop_recording: 'Kaydı durdur',
+    play_audio: 'Sesi oynat',
+    audio_play_error: 'Ses oynatma hatası',
+    enter_source_text: 'Metin girin veya kayıt başlatın',
+    translation_will_appear_here: 'Çeviri burada görünecek',
+    auto_detect: 'Otomatik algıla',
+    confidence: 'Güven',
+    no_speech_detected: 'Konuşma algılanmadı. Lütfen tekrar deneyin.',
+    transcription_error: 'Konuşmayı metne dönüştürme hatası',
+    rate_limit_helper_title: 'API Kullanım Limiti Aşıldı',
+    rate_limit_helper_desc: 'API kullanım limitine ulaştınız. Bu sınırlama, kötüye kullanımı önlemek ve herkes için hizmet kullanılabilirliğini sağlamak için konulmuştur.',
+    rate_limit_helper_cooldown: 'Kalan Bekleme Süresi:',
+    rate_limit_helper_recommendations: 'Öneriler:',
+    rate_limit_helper_rec1: 'Bekleme süresi bitene kadar bekleyin',
+    rate_limit_helper_rec2: 'Daha kısa ses kayıtları kullanın',
+    rate_limit_helper_rec3: 'Mümkün olduğunda kayıt yerine metin yazın',
+    rate_limit_helper_rec4: 'Önbellekteki çevrilmiş içeriği kullanın',
+    api_rate_limit_exceeded: 'API istek limiti aşıldı. Lütfen şu kadar süre sonra tekrar deneyin:',
+    api_rate_limit_exceeded_daily: 'Günlük API limiti aşıldı. Lütfen yarın tekrar deneyin.',
+    api_cooldown: 'API bekleme süresi',
+    daily_api_usage: 'Günlük API kullanımı',
+    clear_cache: 'Çeviri önbelleğini temizle',
+    cache_cleared: 'Çeviri önbelleği başarıyla temizlendi',
+    cache_clear_error: 'Çeviri önbelleği temizlenirken hata oluştu',
+    minutes: 'dakika'
   }
 };
 

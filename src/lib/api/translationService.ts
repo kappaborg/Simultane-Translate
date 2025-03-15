@@ -1,3 +1,5 @@
+import { optimizeAudioForAPI, splitAudioIntoSegments } from '@/lib/utils/audioUtils';
+import { APIKeyRotator, apiUsageTracker, translationCache } from '@/lib/utils/cacheUtils';
 import { chunkText } from '@/lib/utils/helpers';
 import axios from 'axios';
 
@@ -19,10 +21,14 @@ const DEMO_MODE = !OPENAI_API_KEY ||
                  (TRANSLATION_API_PROVIDER === 'libre' && !LIBRETRANSLATE_API_KEY);
 
 // Diğer sabitler
-const MAX_RETRIES = 5;  // 2'den 5'e çıkarıldı - Başarısız API istekleri için maksimum yeniden deneme sayısı
+const MAX_RETRIES = 5;  // Başarısız API istekleri için maksimum yeniden deneme sayısı
 const MAX_AUDIO_SIZE_MB = 25;  // OpenAI Whisper API için ses dosyası maksimum boyutu (MB)
 const RETRY_DELAY_BASE = 3000; // 3 saniye baz gecikme süresi
 const COOLDOWN_PERIOD = 60000; // Rate limit sonrası 60 saniyelik bekleme süresi
+
+// OpenAI API anahtarları - birden fazla anahtar varsa virgülle ayırarak .env dosyasına ekleyin
+const OPENAI_API_KEYS = OPENAI_API_KEY.split(',').filter(key => key.trim() !== '');
+const openAIKeyRotator = new APIKeyRotator(OPENAI_API_KEYS, 50); // Saatte maks 50 istek
 
 // API İstek hız sınırlama ve durumu takip için değişkenler
 const apiRequestStatus = {
@@ -71,6 +77,9 @@ const makeApiRequest = async <T>(requestFn: () => Promise<T>, errorMsg: string):
     // Başarılı olduğunda hata sayacını sıfırla
     apiRequestStatus.consecutiveFailures = 0;
     
+    // API kullanımını takip et
+    apiUsageTracker.trackRequest();
+    
     return result;
   } catch (error: any) {
     // Rate limit hatasıysa
@@ -81,6 +90,9 @@ const makeApiRequest = async <T>(requestFn: () => Promise<T>, errorMsg: string):
       if (apiRequestStatus.consecutiveFailures >= 2) {
         setCooldownPeriod();
       }
+      
+      // Mevcut API anahtarını rotasyona sok
+      openAIKeyRotator.rotateKey();
       
       throw new Error('API istek limiti aşıldı. Lütfen birkaç dakika bekleyip tekrar deneyin veya OpenAI API anahtarınızı kontrol edin.');
     }
@@ -137,6 +149,77 @@ export const transcribeAudio = async (
     throw new Error(`Ses dosyası çok büyük (${fileSizeMB.toFixed(2)}MB). Maksimum boyut ${MAX_AUDIO_SIZE_MB}MB olmalıdır.`);
   }
 
+  // Çok büyük ses dosyalarını segmentlere böl ve optimize et
+  let segments: Blob[] = [];
+  let optimizedBlob: Blob;
+  
+  try {
+    // Sesi optimize et (çok büyük ses dosyaları için)
+    if (fileSizeMB > 10) {
+      // Ses dosyasını parçalara böl
+      segments = await splitAudioIntoSegments(audioBlob, 30);
+      
+      // Her bir parçayı optimize et
+      const optimizedSegments = await Promise.all(
+        segments.map(segment => optimizeAudioForAPI(segment))
+      );
+      
+      // Eğer sadece bir segment varsa, onu kullan
+      if (optimizedSegments.length === 1) {
+        optimizedBlob = optimizedSegments[0];
+      } else {
+        // Birden fazla segment varsa, her biri ayrı ayrı işlenecek
+        segments = optimizedSegments;
+      }
+    } else {
+      // Küçük ses dosyaları için doğrudan optimize et
+      optimizedBlob = await optimizeAudioForAPI(audioBlob);
+    }
+  } catch (error) {
+    console.warn('Ses optimizasyonu başarısız, orijinal ses kullanılıyor:', error);
+    optimizedBlob = audioBlob;
+  }
+
+  let lastError;
+  
+  // Birden fazla segment varsa her birini ayrı ayrı işle ve birleştir
+  if (segments.length > 1) {
+    try {
+      const transcriptionResults = await Promise.all(
+        segments.map(async (segment, index) => {
+          console.log(`Segment ${index + 1}/${segments.length} işleniyor...`);
+          try {
+            const result = await processAudioSegment(segment, language);
+            return result.text;
+          } catch (error) {
+            console.error(`Segment ${index + 1} işlenirken hata:`, error);
+            throw error;
+          }
+        })
+      );
+      
+      // Birleştir
+      const combinedText = transcriptionResults.join(' ');
+      return { text: combinedText, confidence: 0.85 };
+    } catch (error) {
+      console.error('Segmentlerin işlenmesi sırasında hata:', error);
+      lastError = error;
+      // Hata aldıysak tek bir bütün olarak deneyelim
+      optimizedBlob = await optimizeAudioForAPI(audioBlob);
+    }
+  }
+  
+  // Tek bir ses dosyası olarak işle
+  return processAudioSegment(optimizedBlob, language);
+};
+
+/**
+ * Tek bir ses segmentini işle
+ */
+const processAudioSegment = async (
+  audioBlob: Blob, 
+  language?: string
+): Promise<{ text: string; confidence?: number }> => {
   let lastError;
   
   // Retry mantığı
@@ -155,18 +238,28 @@ export const transcribeAudio = async (
       if (language) {
         formData.append('language', language);
       }
+      
+      // API anahtar rotasyonu kullan
+      const currentApiKey = openAIKeyRotator.getCurrentKey();
+      
+      if (!currentApiKey) {
+        throw new Error('Geçerli bir OpenAI API anahtarı bulunamadı.');
+      }
 
       // API isteğini wrapper ile yap
       const response = await makeApiRequest(
         () => axios.post<OpenAITranscriptionResponse>(OPENAI_API_URL, formData, {
           headers: {
-            'Authorization': `Bearer ${OPENAI_API_KEY}`,
+            'Authorization': `Bearer ${currentApiKey}`,
             'Content-Type': 'multipart/form-data',
           },
           timeout: 30000, // 30 saniye
         }),
         'Transkripsiyon hatası'
       );
+      
+      // Başarılı API kullanımını işaretle
+      openAIKeyRotator.markKeyUsed();
 
       return { text: response.data.text, confidence: 0.9 };
     } catch (error: any) {
@@ -177,6 +270,10 @@ export const transcribeAudio = async (
         // Daha uzun bir exponential backoff kullan - 3, 6, 12, 24, 48 saniye
         const waitTime = RETRY_DELAY_BASE * Math.pow(2, attempt); 
         console.log(`Rate limit aşıldı. ${waitTime}ms bekleyip yeniden deneniyor (${attempt + 1}/${MAX_RETRIES})...`);
+        
+        // API anahtarını rotasyona sok
+        openAIKeyRotator.rotateKey();
+        
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue; // Sonraki denemeye geç
       }
@@ -288,6 +385,10 @@ export const translateText = async (
   sourceLanguage: string,
   targetLanguage: string
 ): Promise<{ translatedText: string; confidence: number }> => {
+  if (!text || text.trim() === '') {
+    return { translatedText: '', confidence: 0 };
+  }
+  
   if (DEMO_MODE) {
     // API çağrısı gecikmesini simüle et
     await new Promise(resolve => setTimeout(resolve, 300));
@@ -300,13 +401,41 @@ export const translateText = async (
     
     return { translatedText, confidence };
   }
+  
+  // Önbellekten çeviriyi kontrol et
+  try {
+    const cachedTranslation = await translationCache.get(text, sourceLanguage, targetLanguage);
+    if (cachedTranslation) {
+      console.log('Çeviri önbellekten alındı');
+      return cachedTranslation;
+    }
+  } catch (error) {
+    // Önbellek hatası durumunda gerçek API kullan
+    console.warn('Önbellek kontrolü başarısız, API kullanılacak:', error);
+  }
 
   // Seçilen API sağlayıcısına göre çeviriyi yap
+  let result;
   if (TRANSLATION_API_PROVIDER === 'microsoft') {
-    return translateWithMicrosoft(text, sourceLanguage, targetLanguage);
+    result = await translateWithMicrosoft(text, sourceLanguage, targetLanguage);
   } else {
-    return translateWithLibre(text, sourceLanguage, targetLanguage);
+    result = await translateWithLibre(text, sourceLanguage, targetLanguage);
   }
+  
+  // Başarılı çeviriyi önbelleğe kaydet
+  try {
+    await translationCache.set(
+      text, 
+      result.translatedText, 
+      sourceLanguage, 
+      targetLanguage,
+      result.confidence
+    );
+  } catch (error) {
+    console.warn('Çeviri önbelleğe kaydedilemedi:', error);
+  }
+  
+  return result;
 };
 
 /**
@@ -318,18 +447,21 @@ export const translateLargeText = async (
   targetLanguage: string,
   maxChunkSize: number = 1000
 ): Promise<{ translatedText: string; confidence: number }> => {
+  // Kısa metinler için doğrudan çeviri yap
+  if (text.length <= maxChunkSize) {
+    return translateText(text, sourceLanguage, targetLanguage);
+  }
+  
   // Metni parçalara ayır
   const chunks = chunkText(text, maxChunkSize);
   
-  // Her parçayı çevir
+  // Her parçayı paralel olarak çevir
   const translations = await Promise.all(
     chunks.map(chunk => translateText(chunk, sourceLanguage, targetLanguage))
   );
   
-  // Çevrilen parçaları birleştir
+  // Çevrilen parçaları birleştir ve ortalama güven skorunu hesapla
   const translatedText = translations.map(t => t.translatedText).join(' ');
-  
-  // Ortalama güven skorunu hesapla
   const confidence = translations.reduce((sum, t) => sum + t.confidence, 0) / translations.length;
   
   return { translatedText, confidence };
