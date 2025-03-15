@@ -58,7 +58,7 @@ const TranslationPanel: React.FC = () => {
     // Clean up on unmount
     return () => {
       if (speechRecognitionInstance) {
-        speechRecognitionInstance.stop();
+        (speechRecognitionInstance as any).stop();
       }
       
       if (audioRecorder.current) {
@@ -193,16 +193,17 @@ const TranslationPanel: React.FC = () => {
         try {
           // Tip dönüşümü ile tarayıcı API'sını kullanıyoruz
           speechRecognitionInstance = new SpeechRecognitionConstructor() as any;
-          speechRecognitionInstance.continuous = true;
-          speechRecognitionInstance.interimResults = true;
-          speechRecognitionInstance.lang = sourceLanguage;
+          // Non-null assertion ile TypeScript hatasını gideriyoruz
+          (speechRecognitionInstance as any).continuous = true;
+          (speechRecognitionInstance as any).interimResults = true;
+          (speechRecognitionInstance as any).lang = sourceLanguage;
           
-          speechRecognitionInstance.onresult = handleSpeechResult;
-          speechRecognitionInstance.onerror = (event: any) => {
+          (speechRecognitionInstance as any).onresult = handleSpeechResult;
+          (speechRecognitionInstance as any).onerror = (event: any) => {
             setError(t('speech_recognition_error', event.error));
           };
           
-          speechRecognitionInstance.start();
+          (speechRecognitionInstance as any).start();
           setRecordingState('recording');
         } catch (error) {
           setError(t('speech_recognition_error', error instanceof Error ? error.message : String(error)));
@@ -219,7 +220,7 @@ const TranslationPanel: React.FC = () => {
       }
     } else {
       if (speechRecognitionInstance) {
-        speechRecognitionInstance.stop();
+        (speechRecognitionInstance as any).stop();
       }
     }
     
@@ -238,14 +239,14 @@ const TranslationPanel: React.FC = () => {
       if (isAdvancedMode && audioRecorder.current) {
         audioRecorder.current.pauseRecording();
       } else if (speechRecognitionInstance) {
-        speechRecognitionInstance.stop();
+        (speechRecognitionInstance as any).stop();
       }
       setRecordingState('paused');
     } else if (recordingState === 'paused') {
       if (isAdvancedMode && audioRecorder.current) {
         audioRecorder.current.resumeRecording();
       } else if (speechRecognitionInstance) {
-        speechRecognitionInstance.start();
+        (speechRecognitionInstance as any).start();
       }
       setRecordingState('recording');
     }
@@ -257,9 +258,9 @@ const TranslationPanel: React.FC = () => {
     
     // Update speech recognition language if active
     if (speechRecognitionInstance && recordingState !== 'inactive') {
-      speechRecognitionInstance.stop();
-      speechRecognitionInstance.lang = code;
-      speechRecognitionInstance.start();
+      (speechRecognitionInstance as any).stop();
+      (speechRecognitionInstance as any).lang = code;
+      (speechRecognitionInstance as any).start();
     }
     
     // Update session if active
