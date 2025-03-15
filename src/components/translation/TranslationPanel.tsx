@@ -180,7 +180,7 @@ const TranslationPanel: React.FC = () => {
       if (audioRecorder.current) {
         try {
           audioRecorder.current.startRecording(
-            null, // Real-time processing not needed
+            undefined, // Real-time processing not needed
             (blob) => processAudioForAdvancedMode(blob)
           );
           setRecordingState('recording');
