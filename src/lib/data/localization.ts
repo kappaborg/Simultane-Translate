@@ -39,7 +39,9 @@ export type LocalizationKey =
   | 'permission_helper_step2'
   | 'permission_helper_step3'
   | 'permission_helper_step4'
-  | 'permission_helper_request_button';
+  | 'permission_helper_request_button'
+  | 'rate_limit_error'
+  | 'translating';
 
 type LocalizationMap = Record<LocalizationKey, string>;
 
@@ -87,7 +89,9 @@ export const localizations: Localizations = {
     permission_helper_step2: 'Open site settings or permissions menu',
     permission_helper_step3: 'Set microphone permissions to "Allow"',
     permission_helper_step4: 'Refresh the page and try again',
-    permission_helper_request_button: 'Request Permission'
+    permission_helper_request_button: 'Request Permission',
+    rate_limit_error: 'OpenAI API rate limit exceeded. Please wait 30-60 seconds and try again.',
+    translating: 'Translating your text...'
   },
   bs: {
     app_title: 'Simultano Prevođenje',
@@ -130,7 +134,9 @@ export const localizations: Localizations = {
     permission_helper_step2: 'Otvorite postavke stranice ili izbornik dozvola',
     permission_helper_step3: 'Postavite dozvole za mikrofon na "Dozvoli"',
     permission_helper_step4: 'Osvježite stranicu i pokušajte ponovo',
-    permission_helper_request_button: 'Zatraži Dozvolu'
+    permission_helper_request_button: 'Zatraži Dozvolu',
+    rate_limit_error: 'OpenAI API ograničenje stope je prekoračeno. Pričekajte 30-60 sekundi i pokušajte ponovo.',
+    translating: 'Prevođenje vašeg teksta...'
   },
   tr: {
     app_title: 'Eşzamanlı Çeviri',
@@ -173,7 +179,9 @@ export const localizations: Localizations = {
     permission_helper_step2: 'Site ayarları veya izinler menüsünü açın',
     permission_helper_step3: 'Mikrofon izinlerini "İzin Ver" olarak ayarlayın',
     permission_helper_step4: 'Sayfayı yenileyin ve tekrar deneyin',
-    permission_helper_request_button: 'İzin İste'
+    permission_helper_request_button: 'İzin İste',
+    rate_limit_error: 'OpenAI API istek limiti aşıldı. Lütfen 30-60 saniye bekleyin ve tekrar deneyin.',
+    translating: 'Metniniz çevriliyor...'
   }
 };
 

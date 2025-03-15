@@ -216,16 +216,29 @@ const TranslationPanel: React.FC = () => {
       const audioFile = new File([blob], 'recording.webm', { type: 'audio/webm' });
       
       try {
+        // Kullanıcıya transcription işlemi hakkında bilgi ver
+        setTranscript(t('processing_audio'));
+        
+        // Transkripsiyonu dene
         const transcription = await transcribeAudio(audioFile, sourceLanguage);
         
         // Transcription result is now an object, use the text property
         setTranscript(transcription.text);
         
+        // Çeviri işlemi başladığında kullanıcıya bildir
+        setTranslation(t('translating'));
+        
         // Now translate the transcribed text
         await translateText(transcription.text);
-      } catch (err) {
-        // Display API error message directly
-        setError(`${err instanceof Error ? err.message : String(err)}`);
+      } catch (err: any) {
+        // API rate limit hatası kontrolü
+        if (err.message && err.message.includes('API istek limiti aşıldı')) {
+          setError(`${t('rate_limit_error', 'OpenAI API istek limiti aşıldı. Lütfen 30-60 saniye bekleyin ve tekrar deneyin.')}`);
+          // Rate limit hatası durumunda retry butonu göster ya da sayfayı yenile seçeneği sunmak için ek UI elemanları eklenebilir
+        } else {
+          // Display API error message directly
+          setError(`${err instanceof Error ? err.message : String(err)}`);
+        }
         setTranscript(""); // Clear transcript on error
         setIsTranslating(false);
         return;

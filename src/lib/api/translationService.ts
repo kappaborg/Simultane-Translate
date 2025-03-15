@@ -19,8 +19,9 @@ const DEMO_MODE = !OPENAI_API_KEY ||
                  (TRANSLATION_API_PROVIDER === 'libre' && !LIBRETRANSLATE_API_KEY);
 
 // Diğer sabitler
-const MAX_RETRIES = 2;  // Başarısız API istekleri için maksimum yeniden deneme sayısı
+const MAX_RETRIES = 5;  // 2'den 5'e çıkarıldı - Başarısız API istekleri için maksimum yeniden deneme sayısı
 const MAX_AUDIO_SIZE_MB = 25;  // OpenAI Whisper API için ses dosyası maksimum boyutu (MB)
+const RETRY_DELAY_BASE = 3000; // 3 saniye baz gecikme süresi
 
 // API response interfaces
 interface OpenAITranscriptionResponse {
@@ -95,7 +96,8 @@ export const transcribeAudio = async (
       
       // 429 hatası (rate limit) durumunda bekle ve tekrar dene
       if (error.response?.status === 429 && attempt < MAX_RETRIES) {
-        const waitTime = Math.pow(2, attempt + 1) * 1000; // Exponential backoff
+        // Daha uzun bir exponential backoff kullan - 3, 6, 12, 24, 48 saniye
+        const waitTime = RETRY_DELAY_BASE * Math.pow(2, attempt); 
         console.log(`Rate limit aşıldı. ${waitTime}ms bekleyip yeniden deneniyor (${attempt + 1}/${MAX_RETRIES})...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue; // Sonraki denemeye geç
