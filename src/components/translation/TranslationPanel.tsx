@@ -3,7 +3,8 @@ import { transcribeAudio, translateText as translate } from '@/lib/api/translati
 import { useLocalization } from '@/lib/hooks/useLocalization';
 import { translationSessionService } from '@/lib/services/translationSessionService';
 import { debounce } from '@/lib/utils/helpers';
-import { RecordingState, SpeechRecognition, TranslationResult, TranslationSession } from '@/types';
+import type { SpeechRecognition } from '@/types';
+import { RecordingState, TranslationResult, TranslationSession } from '@/types';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { MicrophoneIcon, PauseIcon, PlayIcon, StopIcon } from '@heroicons/react/24/solid';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
