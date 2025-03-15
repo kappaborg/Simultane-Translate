@@ -21,7 +21,7 @@ export interface SpeechRecognition extends EventTarget {
   onaudioend: ((this: SpeechRecognition, ev: Event) => any) | null;
   onaudiostart: ((this: SpeechRecognition, ev: Event) => any) | null;
   onend: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onerror: ((this: SpeechRecognition, ev: Event) => any) | null;
+  onerror: ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any) | null;
   onnomatch: ((this: SpeechRecognition, ev: Event) => any) | null;
   onresult: ((this: SpeechRecognition, ev: Event) => any) | null;
   onsoundend: ((this: SpeechRecognition, ev: Event) => any) | null;
@@ -32,6 +32,11 @@ export interface SpeechRecognition extends EventTarget {
   abort(): void;
   start(): void;
   stop(): void;
+}
+
+export interface SpeechRecognitionErrorEvent extends Event {
+  error: string;
+  message: string;
 }
 
 export interface SpeechRecognitionResult {
@@ -85,7 +90,12 @@ export type TranslationSettings = {
   saveHistory: boolean;
 };
 
-export type UserPreferences = {
+// useTranslationStore tarafından kullanılan ve SettingsPanel tarafından beklenen UserPreferences yapısı
+export interface UserPreferences {
+  defaultSourceLanguage: string;
+  defaultTargetLanguage: string;
+  voiceSpeed: number;
+  autoDetectLanguage: boolean;
+  saveHistory: boolean;
   theme: 'light' | 'dark' | 'system';
-  translation: TranslationSettings;
 }; 
