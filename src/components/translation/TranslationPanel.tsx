@@ -23,6 +23,26 @@ if (typeof window !== 'undefined') {
   }
 }
 
+// SpeechRecognition API'sinin kullanılabilirliğini ve güvenlik gereksinimlerini kontrol et
+const checkSpeechRecognitionAvailability = (): { available: boolean; reason?: string } => {
+  // Tarayıcı tarafında değilsek kullanılamaz
+  if (typeof window === 'undefined') {
+    return { available: false, reason: 'server-side' };
+  }
+  
+  // SpeechRecognition API desteği var mı?
+  if (!SpeechRecognitionConstructor) {
+    return { available: false, reason: 'not-supported' };
+  }
+  
+  // HTTPS kullanılıyor mu?
+  if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+    return { available: false, reason: 'not-secure' };
+  }
+  
+  return { available: true };
+};
+
 const TranslationPanel: React.FC = () => {
   const { t, locale } = useLocalization();
   
@@ -44,8 +64,15 @@ const TranslationPanel: React.FC = () => {
   // Check browser support for speech recognition on client-side only
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const supported = SpeechRecognitionConstructor !== null;
+      const speechRecognitionCheck = checkSpeechRecognitionAvailability();
+      const supported = speechRecognitionCheck.available;
+      
       setBrowserSupported(supported);
+      
+      // Eğer API destekleniyor ama güvenlik nedeniyle kullanılamıyorsa
+      if (!supported && speechRecognitionCheck.reason === 'not-secure') {
+        setError(t('browser_https_required', 'Ses tanıma özelliği yalnızca HTTPS üzerinden kullanılabilir. Lütfen HTTPS bağlantısı kullanın.'));
+      }
     }
   }, []);
   
@@ -168,6 +195,19 @@ const TranslationPanel: React.FC = () => {
     setTranscript("");
     setTranslation("");
     
+    // Önce SpeechRecognition API'nin kullanılabilirliğini kontrol edelim
+    const speechCheck = checkSpeechRecognitionAvailability();
+    if (!speechCheck.available) {
+      if (speechCheck.reason === 'not-supported') {
+        setError(t('browser_not_supported_description', 'Tarayıcınız ses tanıma özelliğini desteklemiyor. Lütfen Chrome, Edge veya Safari gibi modern bir tarayıcı kullanın.'));
+      } else if (speechCheck.reason === 'not-secure') {
+        setError(t('browser_https_required', 'Ses tanıma özelliği yalnızca HTTPS üzerinden kullanılabilir. Lütfen HTTPS bağlantısı kullanın.'));
+      } else {
+        setError(t('speech_recognition_not_available', 'Ses tanıma servisine erişilemiyor.'));
+      }
+      return;
+    }
+    
     // Create a new session if we don't have one
     if (!currentSession) {
       const newSession = translationSessionService.createSession(sourceLanguage, targetLanguage);
@@ -200,12 +240,31 @@ const TranslationPanel: React.FC = () => {
           
           (speechRecognitionInstance as any).onresult = handleSpeechResult;
           (speechRecognitionInstance as any).onerror = (event: any) => {
-            setError(t('speech_recognition_error', event.error));
+            console.error('Speech Recognition Error:', event.error);
+            
+            // Spesifik hata mesajlarını daha kullanıcı dostu biçimde ele alalım
+            if (event.error === 'service-not-allowed') {
+              setError(t('speech_recognition_error_not_allowed', 'Ses tanıma servisine erişim izni verilmedi. Lütfen tarayıcı izinlerini kontrol edin ve HTTPS bağlantısı kullandığınızdan emin olun.'));
+            } else if (event.error === 'not-allowed') {
+              setError(t('speech_recognition_error_mic_denied', 'Mikrofon erişimi reddedildi. Lütfen tarayıcı izinlerini kontrol edin.'));
+            } else if (event.error === 'no-speech') {
+              setError(t('speech_recognition_error_no_speech', 'Ses algılanamadı. Lütfen mikrofonunuzu kontrol edin ve tekrar deneyin.'));
+            } else if (event.error === 'network') {
+              setError(t('speech_recognition_error_network', 'Ağ bağlantısı hatası. Lütfen internet bağlantınızı kontrol edin.'));
+            } else {
+              setError(t('speech_recognition_error', event.error));
+            }
           };
           
-          (speechRecognitionInstance as any).start();
-          setRecordingState('recording');
+          try {
+            (speechRecognitionInstance as any).start();
+            setRecordingState('recording');
+          } catch (startError) {
+            console.error('Speech Recognition Start Error:', startError);
+            setError(t('speech_recognition_start_error', 'Ses tanıma başlatılamadı. Lütfen tarayıcı izinlerini kontrol edin.'));
+          }
         } catch (error) {
+          console.error('Speech Recognition Init Error:', error);
           setError(t('speech_recognition_error', error instanceof Error ? error.message : String(error)));
         }
       }
