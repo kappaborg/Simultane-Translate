@@ -1,4 +1,3 @@
-
 export type LocalizationKey = 
   | 'app_title'
   | 'app_description'
@@ -23,7 +22,14 @@ export type LocalizationKey =
   | 'microphone_access_denied'
   | 'speech_recognition_error'
   | 'audio_processing_error'
-  | 'translation_error';
+  | 'translation_error'
+  | 'browser_https_required'
+  | 'speech_recognition_error_not_allowed'
+  | 'speech_recognition_error_mic_denied'
+  | 'speech_recognition_error_no_speech'
+  | 'speech_recognition_error_network'
+  | 'speech_recognition_start_error'
+  | 'speech_recognition_not_available';
 
 type LocalizationMap = Record<LocalizationKey, string>;
 
@@ -54,7 +60,14 @@ export const localizations: Localizations = {
     microphone_access_denied: 'Microphone access denied. Please check browser permissions.',
     speech_recognition_error: 'Speech recognition error: {0}',
     audio_processing_error: 'Audio recording processing error: {0}',
-    translation_error: 'Translation error: {0}'
+    translation_error: 'Translation error: {0}',
+    browser_https_required: 'Speech recognition feature is only available over HTTPS. Please use a secure connection.',
+    speech_recognition_error_not_allowed: 'Access to speech recognition service was denied. Please check browser permissions and ensure you are using an HTTPS connection.',
+    speech_recognition_error_mic_denied: 'Microphone access denied. Please check browser permissions.',
+    speech_recognition_error_no_speech: 'No speech detected. Please check your microphone and try again.',
+    speech_recognition_error_network: 'Network error. Please check your internet connection.',
+    speech_recognition_start_error: 'Failed to start speech recognition. Please check browser permissions.',
+    speech_recognition_not_available: 'Speech recognition service is not available.'
   },
   bs: {
     app_title: 'Simultano Prevođenje',
@@ -80,7 +93,14 @@ export const localizations: Localizations = {
     microphone_access_denied: 'Pristup mikrofonu odbijen. Provjerite dozvole preglednika.',
     speech_recognition_error: 'Greška prepoznavanja govora: {0}',
     audio_processing_error: 'Greška obrade zvučnog zapisa: {0}',
-    translation_error: 'Greška prevođenja: {0}'
+    translation_error: 'Greška prevođenja: {0}',
+    browser_https_required: 'Funkcija prepoznavanja govora dostupna je samo preko HTTPS-a. Koristite sigurnu vezu.',
+    speech_recognition_error_not_allowed: 'Pristup usluzi prepoznavanja govora je odbijen. Provjerite dozvole preglednika i osigurajte da koristite HTTPS vezu.',
+    speech_recognition_error_mic_denied: 'Pristup mikrofonu odbijen. Provjerite dozvole preglednika.',
+    speech_recognition_error_no_speech: 'Govor nije otkriven. Provjerite mikrofon i pokušajte ponovo.',
+    speech_recognition_error_network: 'Greška mreže. Provjerite internetsku vezu.',
+    speech_recognition_start_error: 'Nije uspjelo pokretanje prepoznavanja govora. Provjerite dozvole preglednika.',
+    speech_recognition_not_available: 'Usluga prepoznavanja govora nije dostupna.'
   },
   tr: {
     app_title: 'Eşzamanlı Çeviri',
@@ -106,7 +126,14 @@ export const localizations: Localizations = {
     microphone_access_denied: 'Mikrofon erişimi reddedildi. Lütfen tarayıcı izinlerini kontrol edin.',
     speech_recognition_error: 'Konuşma tanıma hatası: {0}',
     audio_processing_error: 'Ses kaydı işleme hatası: {0}',
-    translation_error: 'Çeviri hatası: {0}'
+    translation_error: 'Çeviri hatası: {0}',
+    browser_https_required: 'Ses tanıma özelliği yalnızca HTTPS üzerinden kullanılabilir. Lütfen güvenli bir bağlantı kullanın.',
+    speech_recognition_error_not_allowed: 'Ses tanıma servisine erişim izni verilmedi. Lütfen tarayıcı izinlerini kontrol edin ve HTTPS bağlantısı kullandığınızdan emin olun.',
+    speech_recognition_error_mic_denied: 'Mikrofon erişimi reddedildi. Lütfen tarayıcı izinlerini kontrol edin.',
+    speech_recognition_error_no_speech: 'Ses algılanamadı. Lütfen mikrofonunuzu kontrol edin ve tekrar deneyin.',
+    speech_recognition_error_network: 'Ağ bağlantısı hatası. Lütfen internet bağlantınızı kontrol edin.',
+    speech_recognition_start_error: 'Ses tanıma başlatılamadı. Lütfen tarayıcı izinlerini kontrol edin.',
+    speech_recognition_not_available: 'Ses tanıma servisi kullanılamıyor.'
   }
 };
 
