@@ -12,32 +12,10 @@ declare global {
   }
 }
 
-export interface SpeechRecognition extends EventTarget {
-  continuous: boolean;
-  grammars: any;
-  interimResults: boolean;
-  lang: string;
-  maxAlternatives: number;
-  onaudioend: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onaudiostart: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onend: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onerror: ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any) | null;
-  onnomatch: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onresult: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onsoundend: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onsoundstart: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onspeechend: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onspeechstart: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onstart: ((this: SpeechRecognition, ev: Event) => any) | null;
-  abort(): void;
-  start(): void;
-  stop(): void;
-}
-
-export interface SpeechRecognitionErrorEvent extends Event {
-  error: string;
-  message: string;
-}
+// Not: Web Speech API tipleri tarayıcıda tanımlı olduğu için bu tipleri yorum satırı haline getiriyoruz
+// ve kullanım yerlerinde 'as any' ile tip dönüşümü yapıyoruz
+// export interface SpeechRecognition extends EventTarget { ... }
+// export interface SpeechRecognitionErrorEvent extends Event { ... }
 
 export interface SpeechRecognitionResult {
   transcript: string;

@@ -192,13 +192,14 @@ const TranslationPanel: React.FC = () => {
       // Basic mode - use Web Speech API
       if (SpeechRecognitionConstructor) {
         try {
-          speechRecognitionInstance = new SpeechRecognitionConstructor();
+          // Tip dönüşümü ile tarayıcı API'sını kullanıyoruz
+          speechRecognitionInstance = new SpeechRecognitionConstructor() as any;
           speechRecognitionInstance.continuous = true;
           speechRecognitionInstance.interimResults = true;
           speechRecognitionInstance.lang = sourceLanguage;
           
           speechRecognitionInstance.onresult = handleSpeechResult;
-          speechRecognitionInstance.onerror = (event) => {
+          speechRecognitionInstance.onerror = (event: any) => {
             setError(t('speech_recognition_error', event.error));
           };
           
