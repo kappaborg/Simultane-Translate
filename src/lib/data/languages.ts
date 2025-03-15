@@ -115,4 +115,15 @@ export const addRecentLanguage = (code: string): void => {
   } catch (error) {
     console.error('Failed to add recent language:', error);
   }
-}; 
+};
+
+/**
+ * Map of language codes to names for direct consumption
+ */
+const SupportedLanguages: Record<string, string> = 
+  supportedLanguages.reduce((acc, lang) => {
+    acc[lang.code] = lang.name;
+    return acc;
+  }, {} as Record<string, string>);
+
+export default SupportedLanguages; 

@@ -74,12 +74,30 @@ export class AudioRecorderService {
 
   /**
    * Stop the current recording
+   * @returns Promise that resolves with the final audio blob
    */
-  stopRecording(): void {
-    if (this.mediaRecorder && this.isRecording) {
+  stopRecording(): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      if (!this.mediaRecorder || !this.isRecording) {
+        reject(new Error('No active recording to stop'));
+        return;
+      }
+      
+      // Create a one-time stop handler that will resolve the promise
+      const originalOnStop = this.mediaRecorder.onstop;
+      this.mediaRecorder.onstop = (event) => {
+        // Call the original onstop handler if it exists
+        if (originalOnStop && this.mediaRecorder) {
+          originalOnStop.call(this.mediaRecorder, event);
+        }
+        
+        // Create the final audio blob
+        const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+        resolve(audioBlob);
+      };
+      
       this.mediaRecorder.stop();
-      // Stream is released in the onstop event handler
-    }
+    });
   }
 
   /**

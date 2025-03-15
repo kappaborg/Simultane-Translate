@@ -133,13 +133,15 @@ interface LibreDetectResponse {
 export const transcribeAudio = async (
   audioBlob: Blob,
   language?: string
-): Promise<{ text: string; confidence?: number }> => {
+): Promise<{ text: string; confidence: number }> => {
   if (DEMO_MODE) {
     // API çağrısı gecikmesini simüle et
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    return { 
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    // Demo metni döndür
+    return {
       text: "Bu, API anahtarları yapılandırılmadığı için simüle edilmiş bir transkripsiyondur.",
-      confidence: 0.95
+      confidence: 0.92
     };
   }
 
@@ -149,13 +151,14 @@ export const transcribeAudio = async (
     throw new Error(`Ses dosyası çok büyük (${fileSizeMB.toFixed(2)}MB). Maksimum boyut ${MAX_AUDIO_SIZE_MB}MB olmalıdır.`);
   }
 
-  // Çok büyük ses dosyalarını segmentlere böl ve optimize et
+  // Initialize optimizedBlob with the input audioBlob
+  let optimizedBlob = audioBlob;
+  let lastError: any = null;
   let segments: Blob[] = [];
-  let optimizedBlob: Blob;
   
-  try {
-    // Sesi optimize et (çok büyük ses dosyaları için)
-    if (fileSizeMB > 10) {
+  // Büyük ses dosyalarını parçalara ayırarak işleme
+  if (audioBlob.size > MAX_AUDIO_SIZE_MB * 1024 * 1024) {
+    try {
       // Ses dosyasını parçalara böl
       segments = await splitAudioIntoSegments(audioBlob, 30);
       
@@ -171,17 +174,15 @@ export const transcribeAudio = async (
         // Birden fazla segment varsa, her biri ayrı ayrı işlenecek
         segments = optimizedSegments;
       }
-    } else {
-      // Küçük ses dosyaları için doğrudan optimize et
-      optimizedBlob = await optimizeAudioForAPI(audioBlob);
+    } catch (error) {
+      console.warn('Ses optimizasyonu başarısız, orijinal ses kullanılıyor:', error);
+      optimizedBlob = audioBlob;
     }
-  } catch (error) {
-    console.warn('Ses optimizasyonu başarısız, orijinal ses kullanılıyor:', error);
-    optimizedBlob = audioBlob;
+  } else {
+    // Küçük ses dosyaları için doğrudan optimize et
+    optimizedBlob = await optimizeAudioForAPI(audioBlob);
   }
 
-  let lastError;
-  
   // Birden fazla segment varsa her birini ayrı ayrı işle ve birleştir
   if (segments.length > 1) {
     try {
@@ -219,7 +220,7 @@ export const transcribeAudio = async (
 const processAudioSegment = async (
   audioBlob: Blob, 
   language?: string
-): Promise<{ text: string; confidence?: number }> => {
+): Promise<{ text: string; confidence: number }> => {
   let lastError;
   
   // Retry mantığı
@@ -246,20 +247,20 @@ const processAudioSegment = async (
         throw new Error('Geçerli bir OpenAI API anahtarı bulunamadı.');
       }
 
-      // API isteğini wrapper ile yap
-      const response = await makeApiRequest(
-        () => axios.post<OpenAITranscriptionResponse>(OPENAI_API_URL, formData, {
-          headers: {
-            'Authorization': `Bearer ${currentApiKey}`,
-            'Content-Type': 'multipart/form-data',
-          },
-          timeout: 30000, // 30 saniye
-        }),
-        'Transkripsiyon hatası'
-      );
+      // API isteğini yap
+      const response = await axios.post<OpenAITranscriptionResponse>(OPENAI_API_URL, formData, {
+        headers: {
+          'Authorization': `Bearer ${currentApiKey}`,
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 30000, // 30 saniye
+      });
       
       // Başarılı API kullanımını işaretle
       openAIKeyRotator.markKeyUsed();
+      
+      // API kullanımını takip et
+      apiUsageTracker.trackRequest();
 
       return { text: response.data.text, confidence: 0.9 };
     } catch (error: any) {

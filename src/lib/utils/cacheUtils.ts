@@ -423,6 +423,38 @@ export class APIUsageTracker {
       console.warn('API kullanım verileri yüklenemedi', e);
     }
   }
+
+  /**
+   * Get daily request count
+   */
+  getDailyRequests(): number {
+    this.checkResetNeeded();
+    return this.usageData.dailyRequests;
+  }
+  
+  /**
+   * Get monthly request count
+   */
+  getMonthlyRequests(): number {
+    this.checkResetNeeded();
+    return this.usageData.monthlyRequests;
+  }
+  
+  /**
+   * Get remaining daily requests
+   */
+  getRemainingDailyRequests(dailyLimit: number = 200): number {
+    this.checkResetNeeded();
+    return Math.max(0, dailyLimit - this.usageData.dailyRequests);
+  }
+  
+  /**
+   * Check if daily limit is exceeded
+   */
+  isDailyLimitExceeded(dailyLimit: number = 200): boolean {
+    this.checkResetNeeded();
+    return this.usageData.dailyRequests >= dailyLimit;
+  }
 }
 
 // Singleton olarak dışa aktar
