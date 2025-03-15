@@ -85,16 +85,16 @@ export const useSpeechRecognition = ({
     }
     
     if (recognitionRef.current) {
-      recognitionRef.current.abort();
+      (recognitionRef.current as any).abort();
     }
     
     if (SpeechRecognitionRef.current) {
       recognitionRef.current = new SpeechRecognitionRef.current();
-      recognitionRef.current.continuous = continuous;
-      recognitionRef.current.interimResults = interimResults;
-      recognitionRef.current.lang = language;
+      (recognitionRef.current as any).continuous = continuous;
+      (recognitionRef.current as any).interimResults = interimResults;
+      (recognitionRef.current as any).lang = language;
       
-      recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
+      (recognitionRef.current as any).onresult = (event: SpeechRecognitionEvent) => {
         const result = event.results[event.results.length - 1];
         const transcriptValue = result[0].transcript;
         const confidenceValue = result[0].confidence;
@@ -113,20 +113,20 @@ export const useSpeechRecognition = ({
         }
       };
       
-      recognitionRef.current.onerror = (event: SpeechRecognitionErrorEvent) => {
+      (recognitionRef.current as any).onerror = (event: SpeechRecognitionErrorEvent) => {
         if (onError) onError(event.error);
       };
       
-      recognitionRef.current.onend = () => {
+      (recognitionRef.current as any).onend = () => {
         if (isListening) {
           // If we're still supposed to be listening, restart
-          recognitionRef.current?.start();
+          (recognitionRef.current as any)?.start();
         } else {
           setIsListening(false);
         }
       };
       
-      recognitionRef.current.start();
+      (recognitionRef.current as any).start();
       setIsListening(true);
     }
   }, [
@@ -141,7 +141,7 @@ export const useSpeechRecognition = ({
   
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      (recognitionRef.current as any).stop();
       setIsListening(false);
     }
   }, []);
@@ -156,7 +156,7 @@ export const useSpeechRecognition = ({
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.abort();
+        (recognitionRef.current as any).abort();
       }
     };
   }, []);
