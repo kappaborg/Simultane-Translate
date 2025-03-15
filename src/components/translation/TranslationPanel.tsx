@@ -3,10 +3,10 @@ import { transcribeAudio, translateLargeText } from '@/lib/api/translationServic
 import SupportedLanguages from '@/lib/data/languages';
 import { useLocalization } from '@/lib/hooks/useLocalization';
 import { useTranslation } from '@/lib/hooks/useTranslation';
-import { CopyIcon, SpeakerIcon, SpinnerIcon, TranslateIcon, XMarkIcon } from '@/lib/icons';
+import { CopyIcon, SpeakerIcon, TranslateIcon, XMarkIcon } from '@/lib/icons';
 import { checkAudioQuality, optimizeAudioForAPI } from '@/lib/utils/audioUtils';
 import { apiUsageTracker, translationCache } from '@/lib/utils/cacheUtils';
-import { MicrophoneIcon, PauseIcon } from '@heroicons/react/24/solid';
+import { MicrophoneIcon, PauseIcon, ShieldExclamationIcon } from '@heroicons/react/24/solid';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import PermissionHelper from './PermissionHelper';
@@ -46,8 +46,145 @@ const checkSpeechRecognitionAvailability = (): { available: boolean; reason?: st
 };
 
 // İzin Yardımcısı bilgi paneli bileşeni
+const PermissionHelper: React.FC<{
+  permissionType: 'microphone' | 'speech-recognition';
+  onRequestPermission: () => void;
+  onClose: () => void;
+}> = ({ permissionType, onRequestPermission, onClose }) => {
+  const { t } = useLocalization();
+  
+  return (
+    <div className="mb-6 bg-blue-50 dark:bg-blue-900 p-4 rounded-md">
+      <div className="flex items-start">
+        <ShieldExclamationIcon className="h-6 w-6 text-blue-600 dark:text-blue-400 mt-0.5 mr-3 flex-shrink-0" />
+        <div>
+          <h3 className="text-sm font-medium text-blue-800 dark:text-blue-300">
+            {permissionType === 'microphone' 
+              ? t('permission_helper_mic_title', 'Mikrofon İzni Gerekli') 
+              : t('permission_helper_speech_title', 'Konuşma Tanıma İzni Gerekli')}
+          </h3>
+          <div className="mt-2 text-sm text-blue-700 dark:text-blue-200 space-y-2">
+            <p>
+              {permissionType === 'microphone' 
+                ? t('permission_helper_mic_desc', 'Bu özelliği kullanmak için tarayıcınızın mikrofon erişimine izin vermeniz gerekiyor.')
+                : t('permission_helper_speech_desc', 'Konuşma tanıma hizmetinin düzgün çalışması için tarayıcı izinlerini güncellemeniz gerekiyor.')}
+            </p>
+            <div className="space-y-1">
+              <p className="font-medium">{t('permission_helper_steps', 'Yapmanız gerekenler:')}</p>
+              <ul className="list-disc list-inside ml-2 text-xs">
+                <li>{t('permission_helper_step1', 'Tarayıcı adres çubuğundaki kilit/izin simgesine tıklayın')}</li>
+                <li>{t('permission_helper_step2', 'Site ayarları veya izinler menüsünü açın')}</li>
+                <li>{t('permission_helper_step3', 'Mikrofon izinlerini "İzin Ver" olarak ayarlayın')}</li>
+                <li>{t('permission_helper_step4', 'Sayfayı yenileyin ve tekrar deneyin')}</li>
+              </ul>
+            </div>
+            <button
+              onClick={onRequestPermission}
+              className="mt-3 bg-blue-600 hover:bg-blue-700 text-white py-1 px-3 text-xs rounded-md inline-flex items-center"
+            >
+              <MicrophoneIcon className="h-4 w-4 mr-1" />
+              {t('permission_helper_request_button', 'İzin İste')}
+            </button>
+          </div>
+        </div>
+      </div>
+      <button
+        onClick={onClose}
+        className="mt-3 bg-red-600 hover:bg-red-700 text-white py-1 px-3 text-xs rounded-md inline-flex items-center"
+      >
+        {t('close')}
+      </button>
+    </div>
+  );
+};
 
 // API Rate Limit Hata Yardımcısı bilgi paneli bileşeni
+const RateLimitHelper: React.FC<{
+  cooldownEndTime: number;
+  dailyUsage: number;
+  dailyLimit: number;
+  onClose: () => void;
+}> = ({ cooldownEndTime, dailyUsage, dailyLimit, onClose }) => {
+  const { t } = useLocalization();
+  const [timeRemaining, setTimeRemaining] = useState<string>('');
+  
+  // Kalan süreyi hesapla
+  useEffect(() => {
+    const calculateTimeRemaining = () => {
+      if (cooldownEndTime <= Date.now()) {
+        setTimeRemaining('');
+        return;
+      }
+      
+      const remainingSecs = Math.ceil((cooldownEndTime - Date.now()) / 1000);
+      const mins = Math.floor(remainingSecs / 60);
+      const secs = remainingSecs % 60;
+      
+      setTimeRemaining(`${mins}:${secs < 10 ? '0' : ''}${secs}`);
+    };
+    
+    calculateTimeRemaining();
+    const interval = setInterval(calculateTimeRemaining, 1000);
+    
+    return () => clearInterval(interval);
+  }, [cooldownEndTime]);
+  
+  // Kullanım yüzdesini hesapla (100'ü geçmemesi için Math.min kullanılıyor)
+  const usagePercentage = Math.min(100, Math.round((dailyUsage / (dailyLimit || 1)) * 100));
+  
+  return (
+    <div className="mb-6 bg-yellow-50 dark:bg-yellow-900 p-4 rounded-md">
+      <div className="flex items-start">
+        <ShieldExclamationIcon className="h-6 w-6 text-yellow-600 dark:text-yellow-400 mt-0.5 mr-3 flex-shrink-0" />
+        <div>
+          <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
+            {t('rate_limit_helper_title', 'API Kullanım Limiti Aşıldı')}
+          </h3>
+          <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-200 space-y-2">
+            <p>{t('rate_limit_helper_desc', 'API kullanım limitine ulaştınız. Bu sınırlama, kötüye kullanımı önlemek ve herkes için hizmet kullanılabilirliğini sağlamak için konulmuştur.')}</p>
+            
+            {/* Kullanım grafiği */}
+            <div className="mt-3">
+              <div className="bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
+                <div 
+                  className="bg-yellow-500 h-full rounded-full" 
+                  style={{ width: `${usagePercentage}%` }}
+                />
+              </div>
+              <p className="text-xs mt-1 text-right">
+                {dailyUsage} / {dailyLimit} ({usagePercentage}%)
+              </p>
+            </div>
+            
+            {/* Kalan süre */}
+            {timeRemaining && (
+              <div className="mt-3 p-2 bg-yellow-100 dark:bg-yellow-800 rounded text-center">
+                <h4 className="text-xs font-medium">{t('rate_limit_helper_cooldown', 'Kalan Bekleme Süresi:')}</h4>
+                <p className="text-xl font-bold">{timeRemaining}</p>
+              </div>
+            )}
+            
+            <div className="space-y-1 mt-3">
+              <p className="font-medium">{t('rate_limit_helper_recommendations', 'Öneriler:')}</p>
+              <ul className="list-disc list-inside ml-2 text-xs">
+                <li>{t('rate_limit_helper_rec1', 'Bekleme süresi bitene kadar bekleyin')}</li>
+                <li>{t('rate_limit_helper_rec2', 'Daha kısa ses kayıtları kullanın')}</li>
+                <li>{t('rate_limit_helper_rec3', 'Mümkün olduğunda kayıt yerine metin yazın')}</li>
+                <li>{t('rate_limit_helper_rec4', 'Önbellekteki çevrilmiş içeriği kullanın')}</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button
+        onClick={onClose}
+        className="mt-3 bg-red-600 hover:bg-red-700 text-white py-1 px-3 text-xs rounded-md inline-flex items-center"
+      >
+        {t('close')}
+      </button>
+    </div>
+  );
+};
 
 export const TranslationPanel: React.FC = () => {
   const { t, locale, changeLanguage } = useTranslation();
@@ -239,6 +376,7 @@ export const TranslationPanel: React.FC = () => {
     // Error türüne göre uygun mesajı göster
     switch (event.error) {
       case 'not-allowed':
+      case 'permission-denied':
         setPermissionType('speech-recognition');
         setShowPermissionHelper(true);
         setErrorMessage(t('speech_recognition_error_mic_denied'));
@@ -627,7 +765,7 @@ export const TranslationPanel: React.FC = () => {
   // Handle clear cache button click
   const handleClearCache = useCallback(async () => {
     try {
-      await translationCache.clear();
+      await translationCache.clearCache();
       toast.success(t('cache_cleared'));
     } catch (error) {
       console.error('Önbellek temizleme hatası:', error);
