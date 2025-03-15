@@ -3,23 +3,23 @@ import { transcribeAudio, translateText as translate } from '@/lib/api/translati
 import { useLocalization } from '@/lib/hooks/useLocalization';
 import { translationSessionService } from '@/lib/services/translationSessionService';
 import { debounce } from '@/lib/utils/helpers';
-import { RecordingState, TranslationResult, TranslationSession } from '@/types';
+import { RecordingState, SpeechRecognition, TranslationResult, TranslationSession } from '@/types';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { MicrophoneIcon, PauseIcon, PlayIcon, StopIcon } from '@heroicons/react/24/solid';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ExportPanel from './ExportPanel';
 import LanguageSelector from './LanguageSelector';
 
-// Import browser-only dependencies
-let SpeechRecognition: SpeechRecognition | null = null;
+// Tarayıcı API'lerini tutan değişkenler
+let SpeechRecognitionConstructor: typeof SpeechRecognition | null = null;
 let speechRecognitionInstance: SpeechRecognition | null = null;
 
-// Lazy load browser-only dependencies
+// Yalnızca tarayıcı tarafında çalışacak kodu lazy-load ile yükleme
 if (typeof window !== 'undefined') {
   // Web Speech API
-  const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const SpeechRecognitionAPI = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
   if (SpeechRecognitionAPI) {
-    SpeechRecognition = SpeechRecognitionAPI;
+    SpeechRecognitionConstructor = SpeechRecognitionAPI;
   }
 }
 
@@ -44,7 +44,7 @@ const TranslationPanel: React.FC = () => {
   // Check browser support for speech recognition on client-side only
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const supported = SpeechRecognition !== null;
+      const supported = SpeechRecognitionConstructor !== null;
       setBrowserSupported(supported);
     }
   }, []);
@@ -189,9 +189,9 @@ const TranslationPanel: React.FC = () => {
       }
     } else {
       // Basic mode - use Web Speech API
-      if (SpeechRecognition) {
+      if (SpeechRecognitionConstructor) {
         try {
-          speechRecognitionInstance = new SpeechRecognition();
+          speechRecognitionInstance = new SpeechRecognitionConstructor();
           speechRecognitionInstance.continuous = true;
           speechRecognitionInstance.interimResults = true;
           speechRecognitionInstance.lang = sourceLanguage;
