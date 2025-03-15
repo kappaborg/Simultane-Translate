@@ -5,7 +5,7 @@ import { translationSessionService } from '@/lib/services/translationSessionServ
 import { debounce } from '@/lib/utils/helpers';
 import { RecordingState, TranslationResult, TranslationSession } from '@/types';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import { MicrophoneIcon, PauseIcon, PlayIcon, StopIcon } from '@heroicons/react/24/solid';
+import { MicrophoneIcon, PauseIcon, PlayIcon, ShieldExclamationIcon, StopIcon } from '@heroicons/react/24/solid';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ExportPanel from './ExportPanel';
 import LanguageSelector from './LanguageSelector';
@@ -43,6 +43,52 @@ const checkSpeechRecognitionAvailability = (): { available: boolean; reason?: st
   return { available: true };
 };
 
+// İzin Yardımcısı bilgi paneli bileşeni
+const PermissionHelper: React.FC<{
+  permissionType: 'microphone' | 'speech-recognition';
+  onRequestPermission: () => void;
+}> = ({ permissionType, onRequestPermission }) => {
+  const { t } = useLocalization();
+  
+  return (
+    <div className="mb-6 bg-blue-50 dark:bg-blue-900 p-4 rounded-md">
+      <div className="flex items-start">
+        <ShieldExclamationIcon className="h-6 w-6 text-blue-600 dark:text-blue-400 mt-0.5 mr-3 flex-shrink-0" />
+        <div>
+          <h3 className="text-sm font-medium text-blue-800 dark:text-blue-300">
+            {permissionType === 'microphone' 
+              ? t('permission_helper_mic_title', 'Mikrofon İzni Gerekli') 
+              : t('permission_helper_speech_title', 'Konuşma Tanıma İzni Gerekli')}
+          </h3>
+          <div className="mt-2 text-sm text-blue-700 dark:text-blue-200 space-y-2">
+            <p>
+              {permissionType === 'microphone' 
+                ? t('permission_helper_mic_desc', 'Bu özelliği kullanmak için tarayıcınızın mikrofon erişimine izin vermeniz gerekiyor.') 
+                : t('permission_helper_speech_desc', 'Konuşma tanıma hizmetinin düzgün çalışması için tarayıcı izinlerini güncellemeniz gerekiyor.')}
+            </p>
+            <div className="space-y-1">
+              <p className="font-medium">{t('permission_helper_steps', 'Yapmanız gerekenler:')}</p>
+              <ul className="list-disc list-inside ml-2 text-xs">
+                <li>{t('permission_helper_step1', 'Tarayıcı adres çubuğundaki kilit/izin simgesine tıklayın')}</li>
+                <li>{t('permission_helper_step2', 'Site ayarları veya izinler menüsünü açın')}</li>
+                <li>{t('permission_helper_step3', 'Mikrofon izinlerini "İzin Ver" olarak ayarlayın')}</li>
+                <li>{t('permission_helper_step4', 'Sayfayı yenileyin ve tekrar deneyin')}</li>
+              </ul>
+            </div>
+            <button
+              onClick={onRequestPermission}
+              className="mt-3 bg-blue-600 hover:bg-blue-700 text-white py-1 px-3 text-xs rounded-md inline-flex items-center"
+            >
+              <MicrophoneIcon className="h-4 w-4 mr-1" />
+              {t('permission_helper_request_button', 'İzin İste')}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const TranslationPanel: React.FC = () => {
   const { t, locale } = useLocalization();
   
@@ -57,6 +103,8 @@ const TranslationPanel: React.FC = () => {
   const [isAdvancedMode, setIsAdvancedMode] = useState(false);
   const [currentSession, setCurrentSession] = useState<TranslationSession | null>(null);
   const [browserSupported, setBrowserSupported] = useState(true); // Default to true to avoid hydration mismatch
+  const [showPermissionHelper, setShowPermissionHelper] = useState(false);
+  const [permissionType, setPermissionType] = useState<'microphone' | 'speech-recognition'>('microphone');
   
   // Refs
   const audioRecorder = useRef<AudioRecorderService | null>(null);
@@ -189,8 +237,73 @@ const TranslationPanel: React.FC = () => {
     }
   };
   
+  // Mikrofon izni iste ve erişim durumunu kontrol et
+  const requestMicrophonePermission = async (): Promise<boolean> => {
+    try {
+      // Tarayıcıda değilsek hemen false döndür
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices) {
+        return false;
+      }
+
+      // Mevcut izin durumunu kontrol et (varsa)
+      if (navigator.permissions && navigator.permissions.query) {
+        try {
+          const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+          if (permissionStatus.state === 'granted') {
+            return true;
+          } else if (permissionStatus.state === 'denied') {
+            setError(t('speech_recognition_error_mic_denied'));
+            return false;
+          }
+          // 'prompt' durumunda devam et ve izin iste
+        } catch (err) {
+          // Bazı tarayıcılar permissions API'yi desteklemez, bu durumda doğrudan izin isteyeceğiz
+          console.log('Permissions API not fully supported, proceeding to request access directly');
+        }
+      }
+
+      // Kullanıcıdan açık şekilde mikrofon erişimi iste
+      // Bu, kullanıcının izin vermesi için tarayıcı izin isteğini tetikler
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // İzin verildi, stream'i kapat (zaten amacımız sadece izin istemekti)
+      stream.getTracks().forEach(track => track.stop());
+      return true;
+    } catch (error) {
+      console.error('Microphone permission error:', error);
+      setError(t('speech_recognition_error_mic_denied'));
+      return false;
+    }
+  };
+
+  // Error handling helper function
+  const handleRecognitionError = useCallback((errorType: string, errorMsg: string) => {
+    console.error('Speech Recognition Error:', errorType);
+    setError(errorMsg);
+    
+    // Show permission helper for specific permission errors
+    if (errorType === 'service-not-allowed' || errorType === 'not-allowed') {
+      setPermissionType(errorType === 'service-not-allowed' ? 'speech-recognition' : 'microphone');
+      setShowPermissionHelper(true);
+    } else {
+      setShowPermissionHelper(false);
+    }
+  }, []);
+  
+  // Request permission helper action
+  const handleRequestPermission = useCallback(async () => {
+    // Request microphone permission again
+    const result = await requestMicrophonePermission();
+    if (result) {
+      setShowPermissionHelper(false);
+      setError(null);
+      // Wait a bit to give browser time to update permissions
+      setTimeout(() => startRecording(), 500);
+    }
+  }, []);
+
   // Start recording
-  const startRecording = () => {
+  const startRecording = async () => {
     setError(null);
     setTranscript("");
     setTranslation("");
@@ -199,13 +312,19 @@ const TranslationPanel: React.FC = () => {
     const speechCheck = checkSpeechRecognitionAvailability();
     if (!speechCheck.available) {
       if (speechCheck.reason === 'not-supported') {
-        setError(t('browser_not_supported_description', 'Tarayıcınız ses tanıma özelliğini desteklemiyor. Lütfen Chrome, Edge veya Safari gibi modern bir tarayıcı kullanın.'));
+        setError(t('browser_not_supported_description'));
       } else if (speechCheck.reason === 'not-secure') {
-        setError(t('browser_https_required', 'Ses tanıma özelliği yalnızca HTTPS üzerinden kullanılabilir. Lütfen HTTPS bağlantısı kullanın.'));
+        setError(t('browser_https_required'));
       } else {
-        setError(t('speech_recognition_not_available', 'Ses tanıma servisine erişilemiyor.'));
+        setError(t('speech_recognition_not_available'));
       }
       return;
+    }
+    
+    // Mikrofon izni iste
+    const hasMicPermission = await requestMicrophonePermission();
+    if (!hasMicPermission) {
+      return; // Error already set in the function
     }
     
     // Create a new session if we don't have one
@@ -231,37 +350,112 @@ const TranslationPanel: React.FC = () => {
       // Basic mode - use Web Speech API
       if (SpeechRecognitionConstructor) {
         try {
+          // Önce mevcut instance'ı temizle
+          if (speechRecognitionInstance) {
+            try {
+              (speechRecognitionInstance as any).stop();
+              (speechRecognitionInstance as any).onresult = null;
+              (speechRecognitionInstance as any).onerror = null;
+              (speechRecognitionInstance as any).onend = null;
+            } catch (e) {
+              console.error('Error cleaning up previous instance:', e);
+            }
+            speechRecognitionInstance = null;
+          }
+          
           // Tip dönüşümü ile tarayıcı API'sını kullanıyoruz
           speechRecognitionInstance = new SpeechRecognitionConstructor() as any;
-          // Non-null assertion ile TypeScript hatasını gideriyoruz
-          (speechRecognitionInstance as any).continuous = true;
-          (speechRecognitionInstance as any).interimResults = true;
-          (speechRecognitionInstance as any).lang = sourceLanguage;
           
-          (speechRecognitionInstance as any).onresult = handleSpeechResult;
-          (speechRecognitionInstance as any).onerror = (event: any) => {
-            console.error('Speech Recognition Error:', event.error);
+          // Tarayıcı desteğine göre ayarları yapılandır
+          const recognition = speechRecognitionInstance as any;
+          
+          // Non-null assertion ile TypeScript hatasını gideriyoruz
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          recognition.lang = sourceLanguage;
+          recognition.maxAlternatives = 1;
+          
+          // Tarayıcı desteğine göre ek ayarlar
+          if ('serviceURI' in recognition) {
+            // Bu özellik sadece Firefox'ta mevcut, ancak Chrome uyumluluğu için de kontrol ediyoruz
+            // recognition.serviceURI = 'https://...'; // Eğer özel bir hizmet kullanıyorsanız
+          }
+          
+          // SpeechRecognition servisinin durumu için yeni bir takip mekanizması
+          let recognitionActive = false;
+          
+          // Result handling
+          recognition.onresult = handleSpeechResult;
+          
+          // Error handling with detailed logging
+          recognition.onerror = (event: any) => {
+            console.error('Speech Recognition Error Details:', {
+              error: event.error,
+              message: event.message || 'No message provided',
+              eventTime: new Date().toISOString()
+            });
             
-            // Spesifik hata mesajlarını daha kullanıcı dostu biçimde ele alalım
-            if (event.error === 'service-not-allowed') {
-              setError(t('speech_recognition_error_not_allowed', 'Ses tanıma servisine erişim izni verilmedi. Lütfen tarayıcı izinlerini kontrol edin ve HTTPS bağlantısı kullandığınızdan emin olun.'));
-            } else if (event.error === 'not-allowed') {
-              setError(t('speech_recognition_error_mic_denied', 'Mikrofon erişimi reddedildi. Lütfen tarayıcı izinlerini kontrol edin.'));
+            if (event.error === 'service-not-allowed' || event.error === 'not-allowed') {
+              handleRecognitionError(
+                event.error, 
+                t(event.error === 'service-not-allowed' 
+                  ? 'speech_recognition_error_not_allowed' 
+                  : 'speech_recognition_error_mic_denied')
+              );
             } else if (event.error === 'no-speech') {
-              setError(t('speech_recognition_error_no_speech', 'Ses algılanamadı. Lütfen mikrofonunuzu kontrol edin ve tekrar deneyin.'));
+              setError(t('speech_recognition_error_no_speech'));
             } else if (event.error === 'network') {
-              setError(t('speech_recognition_error_network', 'Ağ bağlantısı hatası. Lütfen internet bağlantınızı kontrol edin.'));
+              setError(t('speech_recognition_error_network'));
             } else {
               setError(t('speech_recognition_error', event.error));
             }
+            
+            recognitionActive = false;
           };
           
+          // On end event, restart if active
+          recognition.onend = () => {
+            console.log('SpeechRecognition ended, active status:', recognitionActive);
+            
+            if (recognitionActive && recordingState === 'recording') {
+              console.log('Attempting to restart recognition service...');
+              try {
+                // SpeechRecognition servisinin yeniden başlatılması
+                recognition.start();
+              } catch (restartError) {
+                console.error('Error restarting recognition:', restartError);
+                setError(t('speech_recognition_start_error'));
+                setRecordingState('inactive');
+              }
+            } else {
+              // Normal bir sonlandırma ise kayıt durumunu güncelle
+              if (recordingState !== 'paused') {
+                setRecordingState('inactive');
+              }
+            }
+          };
+          
+          // Başlatma öncesi son bir kontrol daha
+          console.log('Initializing SpeechRecognition with settings:', {
+            language: sourceLanguage,
+            continuous: true,
+            interimResults: true
+          });
+          
           try {
-            (speechRecognitionInstance as any).start();
+            // Servisin etkinleştirilmiş olduğunu işaretle
+            recognitionActive = true;
+            
+            // Servisi başlat
+            recognition.start();
+            console.log('SpeechRecognition started successfully');
+            
+            // UI'ı güncelle
             setRecordingState('recording');
           } catch (startError) {
             console.error('Speech Recognition Start Error:', startError);
-            setError(t('speech_recognition_start_error', 'Ses tanıma başlatılamadı. Lütfen tarayıcı izinlerini kontrol edin.'));
+            recognitionActive = false;
+            setError(t('speech_recognition_start_error'));
           }
         } catch (error) {
           console.error('Speech Recognition Init Error:', error);
@@ -453,7 +647,14 @@ const TranslationPanel: React.FC = () => {
         </div>
       )}
       
-      {error && (
+      {showPermissionHelper && (
+        <PermissionHelper 
+          permissionType={permissionType}
+          onRequestPermission={handleRequestPermission}
+        />
+      )}
+      
+      {error && !showPermissionHelper && (
         <div className="mb-6 bg-red-50 dark:bg-red-900 p-4 rounded-md flex items-start">
           <ExclamationTriangleIcon className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 mr-2 flex-shrink-0" />
           <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>

@@ -29,7 +29,17 @@ export type LocalizationKey =
   | 'speech_recognition_error_no_speech'
   | 'speech_recognition_error_network'
   | 'speech_recognition_start_error'
-  | 'speech_recognition_not_available';
+  | 'speech_recognition_not_available'
+  | 'permission_helper_mic_title'
+  | 'permission_helper_speech_title'
+  | 'permission_helper_mic_desc'
+  | 'permission_helper_speech_desc'
+  | 'permission_helper_steps'
+  | 'permission_helper_step1'
+  | 'permission_helper_step2'
+  | 'permission_helper_step3'
+  | 'permission_helper_step4'
+  | 'permission_helper_request_button';
 
 type LocalizationMap = Record<LocalizationKey, string>;
 
@@ -67,7 +77,17 @@ export const localizations: Localizations = {
     speech_recognition_error_no_speech: 'No speech detected. Please check your microphone and try again.',
     speech_recognition_error_network: 'Network error. Please check your internet connection.',
     speech_recognition_start_error: 'Failed to start speech recognition. Please check browser permissions.',
-    speech_recognition_not_available: 'Speech recognition service is not available.'
+    speech_recognition_not_available: 'Speech recognition service is not available.',
+    permission_helper_mic_title: 'Microphone Permission Required',
+    permission_helper_speech_title: 'Speech Recognition Permission Required',
+    permission_helper_mic_desc: 'To use this feature, you need to allow your browser to access your microphone.',
+    permission_helper_speech_desc: 'You need to update your browser permissions for the speech recognition service to work properly.',
+    permission_helper_steps: 'What you need to do:',
+    permission_helper_step1: 'Click on the lock/permission icon in your browser address bar',
+    permission_helper_step2: 'Open site settings or permissions menu',
+    permission_helper_step3: 'Set microphone permissions to "Allow"',
+    permission_helper_step4: 'Refresh the page and try again',
+    permission_helper_request_button: 'Request Permission'
   },
   bs: {
     app_title: 'Simultano Prevođenje',
@@ -100,7 +120,17 @@ export const localizations: Localizations = {
     speech_recognition_error_no_speech: 'Govor nije otkriven. Provjerite mikrofon i pokušajte ponovo.',
     speech_recognition_error_network: 'Greška mreže. Provjerite internetsku vezu.',
     speech_recognition_start_error: 'Nije uspjelo pokretanje prepoznavanja govora. Provjerite dozvole preglednika.',
-    speech_recognition_not_available: 'Usluga prepoznavanja govora nije dostupna.'
+    speech_recognition_not_available: 'Usluga prepoznavanja govora nije dostupna.',
+    permission_helper_mic_title: 'Potrebna Dozvola za Mikrofon',
+    permission_helper_speech_title: 'Potrebna Dozvola za Prepoznavanje Govora',
+    permission_helper_mic_desc: 'Da biste koristili ovu funkciju, trebate dopustiti svom pregledniku pristup mikrofonu.',
+    permission_helper_speech_desc: 'Trebate ažurirati dozvole preglednika da bi usluga prepoznavanja govora radila ispravno.',
+    permission_helper_steps: 'Što trebate učiniti:',
+    permission_helper_step1: 'Kliknite na ikonu brave/dozvole u adresnoj traci preglednika',
+    permission_helper_step2: 'Otvorite postavke stranice ili izbornik dozvola',
+    permission_helper_step3: 'Postavite dozvole za mikrofon na "Dozvoli"',
+    permission_helper_step4: 'Osvježite stranicu i pokušajte ponovo',
+    permission_helper_request_button: 'Zatraži Dozvolu'
   },
   tr: {
     app_title: 'Eşzamanlı Çeviri',
@@ -133,7 +163,17 @@ export const localizations: Localizations = {
     speech_recognition_error_no_speech: 'Ses algılanamadı. Lütfen mikrofonunuzu kontrol edin ve tekrar deneyin.',
     speech_recognition_error_network: 'Ağ bağlantısı hatası. Lütfen internet bağlantınızı kontrol edin.',
     speech_recognition_start_error: 'Ses tanıma başlatılamadı. Lütfen tarayıcı izinlerini kontrol edin.',
-    speech_recognition_not_available: 'Ses tanıma servisi kullanılamıyor.'
+    speech_recognition_not_available: 'Ses tanıma servisi kullanılamıyor.',
+    permission_helper_mic_title: 'Mikrofon İzni Gerekli',
+    permission_helper_speech_title: 'Konuşma Tanıma İzni Gerekli',
+    permission_helper_mic_desc: 'Bu özelliği kullanmak için tarayıcınızın mikrofonunuza erişmesine izin vermeniz gerekiyor.',
+    permission_helper_speech_desc: 'Konuşma tanıma hizmetinin düzgün çalışması için tarayıcı izinlerini güncellemeniz gerekiyor.',
+    permission_helper_steps: 'Yapmanız gerekenler:',
+    permission_helper_step1: 'Tarayıcı adres çubuğundaki kilit/izin simgesine tıklayın',
+    permission_helper_step2: 'Site ayarları veya izinler menüsünü açın',
+    permission_helper_step3: 'Mikrofon izinlerini "İzin Ver" olarak ayarlayın',
+    permission_helper_step4: 'Sayfayı yenileyin ve tekrar deneyin',
+    permission_helper_request_button: 'İzin İste'
   }
 };
 
