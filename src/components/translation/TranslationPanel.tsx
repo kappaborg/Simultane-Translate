@@ -89,6 +89,70 @@ const PermissionHelper: React.FC<{
   );
 };
 
+// API Rate Limit Hata Yardımcısı bilgi paneli bileşeni
+const RateLimitHelper: React.FC<{
+  onRetry: () => void;
+  remainingTime?: number;
+}> = ({ onRetry, remainingTime }) => {
+  const { t } = useLocalization();
+  const [countDown, setCountDown] = useState(remainingTime || 60);
+  
+  // Geri sayım efekti
+  useEffect(() => {
+    if (!remainingTime) return;
+    
+    setCountDown(remainingTime);
+    const timer = setInterval(() => {
+      setCountDown(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, [remainingTime]);
+  
+  return (
+    <div className="mb-6 bg-yellow-50 dark:bg-yellow-900 p-4 rounded-md">
+      <div className="flex items-start">
+        <ExclamationTriangleIcon className="h-6 w-6 text-yellow-600 dark:text-yellow-400 mt-0.5 mr-3 flex-shrink-0" />
+        <div>
+          <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
+            {t('rate_limit_error')}
+          </h3>
+          <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-200 space-y-2">
+            <p>{t('rate_limit_description')}</p>
+            
+            {countDown > 0 ? (
+              <p className="font-medium">{t('rate_limit_wait_message', countDown.toString())}</p>
+            ) : (
+              <p>{t('rate_limit_retry_now')}</p>
+            )}
+            
+            <button
+              onClick={onRetry}
+              disabled={countDown > 0}
+              className={`mt-3 py-1 px-3 text-xs rounded-md inline-flex items-center ${
+                countDown > 0 
+                  ? 'bg-gray-300 text-gray-600 cursor-not-allowed' 
+                  : 'bg-yellow-600 hover:bg-yellow-700 text-white'
+              }`}
+            >
+              <span className="mr-1">
+                {countDown > 0 ? `${countDown}s` : ''}
+              </span>
+              {t('rate_limit_retry_button')}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const TranslationPanel: React.FC = () => {
   const { t, locale } = useLocalization();
   
@@ -105,6 +169,9 @@ const TranslationPanel: React.FC = () => {
   const [browserSupported, setBrowserSupported] = useState(true); // Default to true to avoid hydration mismatch
   const [showPermissionHelper, setShowPermissionHelper] = useState(false);
   const [permissionType, setPermissionType] = useState<'microphone' | 'speech-recognition'>('microphone');
+  const [showRateLimitHelper, setShowRateLimitHelper] = useState(false);
+  const [rateLimitCountdown, setRateLimitCountdown] = useState<number | undefined>(undefined);
+  const [lastRecordedBlob, setLastRecordedBlob] = useState<Blob | null>(null);
   
   // Refs
   const audioRecorder = useRef<AudioRecorderService | null>(null);
@@ -203,11 +270,24 @@ const TranslationPanel: React.FC = () => {
     }
   };
   
+  // Extract remaining time from error message if available
+  const extractRemainingTime = (errorMsg: string): number | undefined => {
+    const match = errorMsg.match(/Lütfen (\d+) saniye daha bekleyin/);
+    if (match && match[1]) {
+      return parseInt(match[1], 10);
+    }
+    return undefined;
+  };
+  
   // Function to process audio blobs for advanced mode
   const processAudioForAdvancedMode = async (blob: Blob) => {
     try {
+      // Save the blob for retry capability
+      setLastRecordedBlob(blob);
+      
       setIsTranslating(true);
       setError(null); // Clear previous errors
+      setShowRateLimitHelper(false); // Hide any previous rate limit helper
       
       // Temporary message to inform user about processing
       setTranscript(t('processing_audio'));
@@ -233,8 +313,14 @@ const TranslationPanel: React.FC = () => {
       } catch (err: any) {
         // API rate limit hatası kontrolü
         if (err.message && err.message.includes('API istek limiti aşıldı')) {
-          setError(`${t('rate_limit_error', 'OpenAI API istek limiti aşıldı. Lütfen 30-60 saniye bekleyin ve tekrar deneyin.')}`);
-          // Rate limit hatası durumunda retry butonu göster ya da sayfayı yenile seçeneği sunmak için ek UI elemanları eklenebilir
+          // Check if the error message contains a countdown time
+          const countdown = extractRemainingTime(err.message);
+          if (countdown) {
+            setRateLimitCountdown(countdown);
+          }
+          
+          setShowRateLimitHelper(true);
+          setError(`${t('rate_limit_error', 'OpenAI API istek limiti aşıldı. Lütfen bekleyin ve tekrar deneyin.')}`);
         } else {
           // Display API error message directly
           setError(`${err instanceof Error ? err.message : String(err)}`);
@@ -249,6 +335,14 @@ const TranslationPanel: React.FC = () => {
       setIsTranslating(false);
     }
   };
+  
+  // Retry last transcription attempt
+  const handleRetryTranscription = useCallback(() => {
+    if (lastRecordedBlob) {
+      // Tekrar işleme
+      processAudioForAdvancedMode(lastRecordedBlob);
+    }
+  }, [lastRecordedBlob]);
   
   // Mikrofon izni iste ve erişim durumunu kontrol et
   const requestMicrophonePermission = async (): Promise<boolean> => {
@@ -660,6 +754,13 @@ const TranslationPanel: React.FC = () => {
         </div>
       )}
       
+      {showRateLimitHelper && (
+        <RateLimitHelper 
+          onRetry={handleRetryTranscription}
+          remainingTime={rateLimitCountdown}
+        />
+      )}
+      
       {showPermissionHelper && (
         <PermissionHelper 
           permissionType={permissionType}
@@ -667,7 +768,7 @@ const TranslationPanel: React.FC = () => {
         />
       )}
       
-      {error && !showPermissionHelper && (
+      {error && !showPermissionHelper && !showRateLimitHelper && (
         <div className="mb-6 bg-red-50 dark:bg-red-900 p-4 rounded-md flex items-start">
           <ExclamationTriangleIcon className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 mr-2 flex-shrink-0" />
           <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>

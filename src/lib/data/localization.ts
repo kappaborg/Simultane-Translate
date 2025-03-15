@@ -41,6 +41,10 @@ export type LocalizationKey =
   | 'permission_helper_step4'
   | 'permission_helper_request_button'
   | 'rate_limit_error'
+  | 'rate_limit_description'
+  | 'rate_limit_wait_message'
+  | 'rate_limit_retry_now'
+  | 'rate_limit_retry_button'
   | 'translating';
 
 type LocalizationMap = Record<LocalizationKey, string>;
@@ -90,7 +94,11 @@ export const localizations: Localizations = {
     permission_helper_step3: 'Set microphone permissions to "Allow"',
     permission_helper_step4: 'Refresh the page and try again',
     permission_helper_request_button: 'Request Permission',
-    rate_limit_error: 'OpenAI API rate limit exceeded. Please wait 30-60 seconds and try again.',
+    rate_limit_error: 'OpenAI API rate limit exceeded',
+    rate_limit_description: 'The OpenAI API rate limit has been reached. This means the API is receiving too many requests and is temporarily limiting new requests.',
+    rate_limit_wait_message: 'Please wait {0} seconds and try again.',
+    rate_limit_retry_now: 'You can try again now.',
+    rate_limit_retry_button: 'Retry',
     translating: 'Translating your text...'
   },
   bs: {
@@ -135,7 +143,11 @@ export const localizations: Localizations = {
     permission_helper_step3: 'Postavite dozvole za mikrofon na "Dozvoli"',
     permission_helper_step4: 'Osvježite stranicu i pokušajte ponovo',
     permission_helper_request_button: 'Zatraži Dozvolu',
-    rate_limit_error: 'OpenAI API ograničenje stope je prekoračeno. Pričekajte 30-60 sekundi i pokušajte ponovo.',
+    rate_limit_error: 'OpenAI API ograničenje stope je prekoračeno',
+    rate_limit_description: 'Dosegnuto je ograničenje stope OpenAI API-ja. To znači da API prima previše zahtjeva i privremeno ograničava nove zahtjeve.',
+    rate_limit_wait_message: 'Pričekajte {0} sekundi i pokušajte ponovo.',
+    rate_limit_retry_now: 'Sada možete pokušati ponovo.',
+    rate_limit_retry_button: 'Pokušaj ponovo',
     translating: 'Prevođenje vašeg teksta...'
   },
   tr: {
@@ -180,7 +192,11 @@ export const localizations: Localizations = {
     permission_helper_step3: 'Mikrofon izinlerini "İzin Ver" olarak ayarlayın',
     permission_helper_step4: 'Sayfayı yenileyin ve tekrar deneyin',
     permission_helper_request_button: 'İzin İste',
-    rate_limit_error: 'OpenAI API istek limiti aşıldı. Lütfen 30-60 saniye bekleyin ve tekrar deneyin.',
+    rate_limit_error: 'OpenAI API istek limiti aşıldı',
+    rate_limit_description: 'OpenAI API istek sınırlarına ulaşıldı. Bu, API\'nin çok fazla istek aldığı ve geçici olarak yeni istekleri sınırladığı anlamına gelir.',
+    rate_limit_wait_message: 'Lütfen {0} saniye bekleyin ve tekrar deneyin.',
+    rate_limit_retry_now: 'Şimdi tekrar deneyebilirsiniz.',
+    rate_limit_retry_button: 'Tekrar Dene',
     translating: 'Metniniz çevriliyor...'
   }
 };

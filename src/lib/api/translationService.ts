@@ -22,6 +22,74 @@ const DEMO_MODE = !OPENAI_API_KEY ||
 const MAX_RETRIES = 5;  // 2'den 5'e çıkarıldı - Başarısız API istekleri için maksimum yeniden deneme sayısı
 const MAX_AUDIO_SIZE_MB = 25;  // OpenAI Whisper API için ses dosyası maksimum boyutu (MB)
 const RETRY_DELAY_BASE = 3000; // 3 saniye baz gecikme süresi
+const COOLDOWN_PERIOD = 60000; // Rate limit sonrası 60 saniyelik bekleme süresi
+
+// API İstek hız sınırlama ve durumu takip için değişkenler
+const apiRequestStatus = {
+  lastRequestTime: 0,
+  consecutiveFailures: 0,
+  inCooldown: false,
+  cooldownEndTime: 0
+};
+
+// Rate limit sonrası bekleme süresini ayarla
+const setCooldownPeriod = () => {
+  apiRequestStatus.inCooldown = true;
+  apiRequestStatus.cooldownEndTime = Date.now() + COOLDOWN_PERIOD;
+  console.log(`API rate limit aşıldı. ${COOLDOWN_PERIOD/1000} saniye bekleme moduna geçildi.`);
+  
+  // Belirli bir süre sonra cooldown'ı kaldır
+  setTimeout(() => {
+    apiRequestStatus.inCooldown = false;
+    apiRequestStatus.consecutiveFailures = 0;
+    console.log('API cooldown süresi tamamlandı, istekler tekrar kabul ediliyor.');
+  }, COOLDOWN_PERIOD);
+};
+
+// API request wrapper with rate limiting
+const makeApiRequest = async <T>(requestFn: () => Promise<T>, errorMsg: string): Promise<T> => {
+  // Cooldown süresi içindeyse hata fırlat
+  if (apiRequestStatus.inCooldown) {
+    const remainingTime = Math.ceil((apiRequestStatus.cooldownEndTime - Date.now()) / 1000);
+    throw new Error(`API istek limiti aşıldı. Lütfen ${remainingTime} saniye daha bekleyin.`);
+  }
+  
+  // İstekler arasında en az 1 saniye olmasını sağla
+  const now = Date.now();
+  const timeSinceLastRequest = now - apiRequestStatus.lastRequestTime;
+  if (apiRequestStatus.lastRequestTime > 0 && timeSinceLastRequest < 1000) {
+    await new Promise(resolve => setTimeout(resolve, 1000 - timeSinceLastRequest));
+  }
+  
+  try {
+    // İstek zamanını güncelle
+    apiRequestStatus.lastRequestTime = Date.now();
+    
+    // İsteği gerçekleştir
+    const result = await requestFn();
+    
+    // Başarılı olduğunda hata sayacını sıfırla
+    apiRequestStatus.consecutiveFailures = 0;
+    
+    return result;
+  } catch (error: any) {
+    // Rate limit hatasıysa
+    if (error.response?.status === 429) {
+      apiRequestStatus.consecutiveFailures++;
+      
+      // Üst üste birden fazla hata varsa cooldown başlat
+      if (apiRequestStatus.consecutiveFailures >= 2) {
+        setCooldownPeriod();
+      }
+      
+      throw new Error('API istek limiti aşıldı. Lütfen birkaç dakika bekleyip tekrar deneyin veya OpenAI API anahtarınızı kontrol edin.');
+    }
+    
+    // Diğer hatalar için
+    console.error(errorMsg, error);
+    throw error;
+  }
+};
 
 // API response interfaces
 interface OpenAITranscriptionResponse {
@@ -74,6 +142,12 @@ export const transcribeAudio = async (
   // Retry mantığı
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
+      // API cooldown kontrolü
+      if (apiRequestStatus.inCooldown) {
+        const remainingTime = Math.ceil((apiRequestStatus.cooldownEndTime - Date.now()) / 1000);
+        throw new Error(`API istek limiti aşıldı. Lütfen ${remainingTime} saniye daha bekleyin.`);
+      }
+      
       const formData = new FormData();
       formData.append('file', audioBlob, 'audio.webm');
       formData.append('model', 'whisper-1');
@@ -82,13 +156,17 @@ export const transcribeAudio = async (
         formData.append('language', language);
       }
 
-      const response = await axios.post<OpenAITranscriptionResponse>(OPENAI_API_URL, formData, {
-        headers: {
-          'Authorization': `Bearer ${OPENAI_API_KEY}`,
-          'Content-Type': 'multipart/form-data',
-        },
-        timeout: 30000, // 30 saniye
-      });
+      // API isteğini wrapper ile yap
+      const response = await makeApiRequest(
+        () => axios.post<OpenAITranscriptionResponse>(OPENAI_API_URL, formData, {
+          headers: {
+            'Authorization': `Bearer ${OPENAI_API_KEY}`,
+            'Content-Type': 'multipart/form-data',
+          },
+          timeout: 30000, // 30 saniye
+        }),
+        'Transkripsiyon hatası'
+      );
 
       return { text: response.data.text, confidence: 0.9 };
     } catch (error: any) {
@@ -110,6 +188,8 @@ export const transcribeAudio = async (
       if (error.response) {
         // HTTP yanıtı alındı ama hata kodu döndü
         if (error.response.status === 429) {
+          // Rate limit hatası için cooldown başlat
+          setCooldownPeriod();
           throw new Error('API istek limiti aşıldı. Lütfen birkaç dakika bekleyip tekrar deneyin veya OpenAI API anahtarınızı kontrol edin.');
         } 
         else if (error.response.status === 401) {
