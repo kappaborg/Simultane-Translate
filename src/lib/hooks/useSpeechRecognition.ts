@@ -94,8 +94,8 @@ export const useSpeechRecognition = ({
       (recognitionRef.current as any).interimResults = interimResults;
       (recognitionRef.current as any).lang = language;
       
-      (recognitionRef.current as any).onresult = (event: SpeechRecognitionEvent) => {
-        const result = event.results[event.results.length - 1];
+      (recognitionRef.current as any).onresult = (event: any) => {
+        const result = event.results[event.results.length - 1] as any;
         const transcriptValue = result[0].transcript;
         const confidenceValue = result[0].confidence;
         const isFinalValue = result.isFinal;
