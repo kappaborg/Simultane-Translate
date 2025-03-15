@@ -34,33 +34,6 @@ export interface SpeechRecognition extends EventTarget {
   stop(): void;
 }
 
-export interface TranslationResult {
-  originalText: string;
-  translatedText: string;
-  sourceLanguage: string;
-  targetLanguage: string;
-  confidence?: number;
-  timestamp: number;
-}
-
-export interface TranslationSession {
-  id: string;
-  sourceLanguage: string;
-  targetLanguage: string;
-  startTime: number;
-  endTime?: number;
-  translations: TranslationResult[];
-}
-
-export interface UserPreferences {
-  defaultSourceLanguage: string;
-  defaultTargetLanguage: string;
-  voiceSpeed: number;
-  autoDetectLanguage: boolean;
-  saveHistory: boolean;
-  theme: 'light' | 'dark' | 'system';
-}
-
 export interface SpeechRecognitionResult {
   transcript: string;
   isFinal: boolean;

@@ -109,7 +109,7 @@ const TranslationPanel: React.FC = () => {
           sourceLanguage,
           targetLanguage,
           confidence: result.confidence || 0.85,
-          duration: result.duration || 500
+          duration: 500
         };
         
         const updatedSession = translationSessionService.addTranslation(
