@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     // Metrik toplama
     track('Batch Translation Request', {
       batchSize: data.requests.length,
-      languages: [...new Set(data.requests.map(req => `${req.sourceLang}-${req.targetLang}`))]
+      languages: [...new Set(data.requests.map(req => `${req.sourceLang}-${req.targetLang}`))].join(',')
     });
     
     // Batch olarak çeviri işlemi
