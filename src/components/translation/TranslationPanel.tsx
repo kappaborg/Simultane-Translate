@@ -140,6 +140,13 @@ export const TranslationPanel: React.FC = () => {
     if (recognitionRef.current) {
       try {
         isRecognitionActive.current = false;
+        
+        // Duraksama zamanlayıcısını temizle
+        if (recognitionRef.current.pauseTimer) {
+          clearTimeout(recognitionRef.current.pauseTimer);
+          recognitionRef.current.pauseTimer = null;
+        }
+        
         recognitionRef.current.onresult = null;
         recognitionRef.current.onerror = null;
         recognitionRef.current.onend = null;
@@ -291,13 +298,40 @@ export const TranslationPanel: React.FC = () => {
         const transcript = result[0].transcript;
         const isFinal = result.isFinal;
         
+        // Konuşma algılamada son aktiviteyi kaydet (duraksama tespiti için)
+        recognition.lastSpeechTime = Date.now();
+        
+        // Duraksama zamanlayıcısı varsa temizle ve yeniden ayarla
+        if (recognition.pauseTimer) {
+          clearTimeout(recognition.pauseTimer);
+          recognition.pauseTimer = null;
+        }
+        
         if (isFinal) {
           // Final sonuç için kaynak metni güncelle (mevcut metne ekle)
           setSourceText(prevText => {
             // Eğer önceki metin boşsa veya nokta ile bitiyorsa
             const separator = prevText && !prevText.trim().endsWith('.') ? '. ' : ' ';
-            return prevText + (prevText ? separator : '') + transcript;
+            const updatedText = prevText + (prevText ? separator : '') + transcript;
+            
+            // Güncellenen metni otomatik çevir
+            setTimeout(() => {
+              translateSourceText(updatedText, sourceLanguage, targetLanguage);
+            }, 100);
+            
+            return updatedText;
           });
+        } else {
+          // Duraksama kontrolü ayarla - 3 saniye boyunca yeni konuşma olmazsa çeviri yap
+          recognition.pauseTimer = setTimeout(() => {
+            if (Date.now() - recognition.lastSpeechTime >= 3000) {
+              // Mevcut kaydedilmiş metni çevir
+              const currentText = sourceText;
+              if (currentText && currentText.trim() !== '') {
+                translateSourceText(currentText, sourceLanguage, targetLanguage);
+              }
+            }
+          }, 3000);
         }
       };
       
