@@ -76,4 +76,14 @@ export interface UserPreferences {
   autoDetectLanguage: boolean;
   saveHistory: boolean;
   theme: 'light' | 'dark' | 'system';
-}; 
+};
+
+// SpeechRecognition interfaces removed to avoid conflicts with browser types
+
+// Instead, declare a module to augment the existing types
+declare global {
+  interface SpeechRecognition {
+    pauseTimer?: NodeJS.Timeout | null;
+    lastSpeechTime?: number;
+  }
+} 

@@ -240,24 +240,31 @@ export const TranslationPanel: React.FC = () => {
     }
     
     // Error türüne göre uygun mesajı göster
-    switch (event.error) {
-      case 'not-allowed':
-      case 'permission-denied':
+    const errorType = event.error;
+    
+    if (errorType === 'not-allowed') {
+      setPermissionType('speech-recognition');
+      setShowPermissionHelper(true);
+      setErrorMessage(t('speech_recognition_error_mic_denied'));
+    } else if (errorType === 'no-speech') {
+      setErrorMessage(t('speech_recognition_error_no_speech'));
+    } else if (errorType === 'network') {
+      setErrorMessage(t('speech_recognition_error_network'));
+    } else if (errorType === 'aborted') {
+      // Kullanıcı tarafından durdurulduğunda hata gösterme
+    } else {
+      // For any other error, including 'permission-denied'
+      // Use a more generic approach
+      const errorMessage = (event as any).error === 'permission-denied' 
+        ? t('speech_recognition_error_mic_denied')
+        : t('speech_recognition_start_error');
+        
+      if ((event as any).error === 'permission-denied') {
         setPermissionType('speech-recognition');
         setShowPermissionHelper(true);
-        setErrorMessage(t('speech_recognition_error_mic_denied'));
-        break;
-      case 'no-speech':
-        setErrorMessage(t('speech_recognition_error_no_speech'));
-        break;
-      case 'network':
-        setErrorMessage(t('speech_recognition_error_network'));
-        break;
-      case 'aborted':
-        // Kullanıcı tarafından durdurulduğunda hata gösterme
-        break;
-      default:
-        setErrorMessage(t('speech_recognition_start_error'));
+      }
+      
+      setErrorMessage(errorMessage);
     }
     
     isRecognitionActive.current = false;
@@ -324,7 +331,7 @@ export const TranslationPanel: React.FC = () => {
         } else {
           // Duraksama kontrolü ayarla - 3 saniye boyunca yeni konuşma olmazsa çeviri yap
           recognition.pauseTimer = setTimeout(() => {
-            if (Date.now() - recognition.lastSpeechTime >= 3000) {
+            if (recognition.lastSpeechTime && Date.now() - recognition.lastSpeechTime >= 3000) {
               // Mevcut kaydedilmiş metni çevir
               const currentText = sourceText;
               if (currentText && currentText.trim() !== '') {
@@ -658,7 +665,7 @@ export const TranslationPanel: React.FC = () => {
   // Handle clear cache button click
   const handleClearCache = useCallback(async () => {
     try {
-      await translationCache.clearCache();
+      await translationCache.clear();
       toast.success(t('cache_cleared'));
     } catch (error) {
       console.error('Önbellek temizleme hatası:', error);

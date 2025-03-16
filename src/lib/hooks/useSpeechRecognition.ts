@@ -1,4 +1,4 @@
-import { SpeechRecognitionResult } from '@/types';
+import type { SpeechRecognitionResult } from '@/types';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface UseSpeechRecognitionProps {
@@ -20,38 +20,12 @@ interface SpeechRecognitionHook {
   browserSupportsSpeechRecognition: boolean;
 }
 
-// Define the SpeechRecognition type
+// Define the SpeechRecognition constructor type
 type SpeechRecognitionType = {
   new (): SpeechRecognition;
 };
 
-// Define the SpeechRecognition interface
-interface SpeechRecognition extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start: () => void;
-  stop: () => void;
-  abort: () => void;
-  onresult: (event: SpeechRecognitionEvent) => void;
-  onerror: (event: SpeechRecognitionErrorEvent) => void;
-  onend: () => void;
-}
-
-// Define the SpeechRecognitionEvent interface
-interface SpeechRecognitionEvent {
-  results: SpeechRecognitionResultList;
-}
-
-interface SpeechRecognitionResultList {
-  readonly length: number;
-  [index: number]: SpeechRecognitionResult;
-}
-
-interface SpeechRecognitionErrorEvent {
-  error: string;
-  message: string;
-}
+// Remove the local interface definitions since we're importing them from types/index.ts
 
 export const useSpeechRecognition = ({
   language = 'en-US',
