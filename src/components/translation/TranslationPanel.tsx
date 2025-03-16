@@ -3,9 +3,10 @@ import { transcribeAudio, translateLargeText } from '@/lib/api/translationServic
 import SupportedLanguages from '@/lib/data/languages';
 import { useLocalization } from '@/lib/hooks/useLocalization';
 import { useTranslation } from '@/lib/hooks/useTranslation';
-import { CopyIcon, MicIcon, PauseIconCustom, SpeakerIcon, SpinnerIcon, TranslateIcon, XMarkIcon } from '@/lib/icons';
+import { CopyIcon, SpeakerIcon, SpinnerIcon, TranslateIcon, XMarkIcon } from '@/lib/icons';
 import { checkAudioQuality, optimizeAudioForAPI } from '@/lib/utils/audioUtils';
 import { apiUsageTracker, translationCache } from '@/lib/utils/cacheUtils';
+import { MicrophoneIcon, PauseIcon } from '@heroicons/react/24/solid';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import PermissionHelper from './PermissionHelper';
@@ -665,7 +666,7 @@ export const TranslationPanel: React.FC = () => {
                 className="record-button recording"
                 title={t('stop_recording')}
               >
-                {isTranslating ? <SpinnerIcon /> : <PauseIconCustom />}
+                {isTranslating ? <SpinnerIcon /> : <PauseIcon className="h-6 w-6" />}
               </button>
             ) : (
               <button 
@@ -674,7 +675,7 @@ export const TranslationPanel: React.FC = () => {
                 title={t('start_recording')}
                 disabled={isTranslating}
               >
-                <MicIcon />
+                <MicrophoneIcon className="h-6 w-6" />
               </button>
             )}
           </div>
