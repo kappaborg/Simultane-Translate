@@ -243,7 +243,6 @@ export const TranslationPanel: React.FC = () => {
     // Error türüne göre uygun mesajı göster
     switch (event.error) {
       case 'not-allowed':
-      case 'permission-denied':
         setPermissionType('speech-recognition');
         setShowPermissionHelper(true);
         setErrorMessage(t('speech_recognition_error_mic_denied'));
@@ -668,7 +667,7 @@ export const TranslationPanel: React.FC = () => {
   // Handle clear cache button click
   const handleClearCache = useCallback(async () => {
     try {
-      await translationCache.clearCache();
+      await translationCache.clear();
       toast.success(t('cache_cleared'));
     } catch (error) {
       console.error('Önbellek temizleme hatası:', error);
