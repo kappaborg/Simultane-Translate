@@ -31,6 +31,22 @@ export function useTranslation() {
   useEffect(() => {
     if (isClient) {
       setLocale(getDefaultLocale());
+      
+      // Listen for locale changes from other components
+      const handleLocaleChange = (e: Event) => {
+        const newLocale = (e as CustomEvent).detail?.locale;
+        if (newLocale && localizations[newLocale]) {
+          setLocale(newLocale);
+        }
+      };
+      
+      window.addEventListener('app-locale-changed', handleLocaleChange);
+      window.addEventListener('localeChange', handleLocaleChange);
+      
+      return () => {
+        window.removeEventListener('app-locale-changed', handleLocaleChange);
+        window.removeEventListener('localeChange', handleLocaleChange);
+      };
     }
   }, []);
   
@@ -53,6 +69,13 @@ export function useTranslation() {
   const changeLanguage = useCallback((newLocale: string) => {
     if (localizations[newLocale]) {
       setLocale(newLocale);
+      
+      // Broadcast the language change
+      if (isClient) {
+        window.dispatchEvent(new CustomEvent('app-locale-changed', {
+          detail: { locale: newLocale }
+        }));
+      }
     } else {
       console.warn(`Locale "${newLocale}" is not supported`);
     }

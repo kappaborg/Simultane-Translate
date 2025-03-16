@@ -41,11 +41,18 @@ body {
 .translation-box {
   display: flex;
   flex-direction: column;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: rgba(248, 250, 252, 0.8);
+  border: 1px solid rgba(203, 213, 225, 0.8);
   border-radius: 0.5rem;
-  padding: 0.5rem;
+  padding: 0.75rem;
   overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.translation-box:focus-within {
+  border-color: rgba(99, 102, 241, 0.6);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
 }
 
 .language-selector {
@@ -66,6 +73,38 @@ body {
   font-size: 0.9rem;
   cursor: pointer;
   outline: none;
+  background-color: rgba(240, 240, 240, 0.8);
+  border: 1px solid rgba(200, 200, 200, 0.5);
+  font-weight: 500;
+}
+
+@media (prefers-color-scheme: dark) {
+  .language-selector select {
+    background-color: rgba(50, 50, 50, 0.8);
+    border: 1px solid rgba(80, 80, 80, 0.5);
+  }
+}
+
+.dark .language-selector select {
+  background-color: rgba(50, 50, 50, 0.8);
+  border: 1px solid rgba(80, 80, 80, 0.5);
+}
+
+.language-selector select option {
+  background-color: #ffffff;
+  color: #333333;
+}
+
+@media (prefers-color-scheme: dark) {
+  .language-selector select option {
+    background-color: #222222;
+    color: #f0f0f0;
+  }
+}
+
+.dark .language-selector select option {
+  background-color: #222222;
+  color: #f0f0f0;
 }
 
 .translation-box textarea {
@@ -77,8 +116,9 @@ body {
   color: var(--foreground);
   font-size: 1rem;
   font-family: inherit;
-  padding: 0.5rem;
+  padding: 0.75rem 0.5rem;
   line-height: 1.5;
+  border-radius: 0.25rem;
 }
 
 .actions {
@@ -164,41 +204,46 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background-color: rgba(79, 70, 229, 0.15);
+  border: 2px solid rgba(79, 70, 229, 0.4);
   border-radius: 0.5rem;
   padding: 0.5rem;
   cursor: pointer;
-  color: var(--foreground);
+  color: rgb(79, 70, 229);
   transition: all 0.2s ease;
   min-width: 40px;
   min-height: 40px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .record-button:hover {
-  background-color: rgba(255, 255, 255, 0.3);
+  background-color: rgba(79, 70, 229, 0.25);
+  border-color: rgba(79, 70, 229, 0.6);
+  transform: translateY(-1px);
 }
 
 .record-button svg {
   width: 24px;
   height: 24px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.1));
 }
 
 .record-button.recording {
-  background-color: rgba(231, 76, 60, 0.3);
-  color: #e74c3c;
+  background-color: rgba(239, 68, 68, 0.25);
+  color: rgb(239, 68, 68);
+  border-color: rgba(239, 68, 68, 0.5);
   animation: pulse 1.5s infinite;
 }
 
 @keyframes pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
   }
   70% {
-    box-shadow: 0 0 0 10px rgba(231, 76, 60, 0);
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(231, 76, 60, 0);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
   }
 }
 
@@ -206,17 +251,128 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(52, 152, 219, 0.2);
-  border: none;
+  background-color: rgba(79, 70, 229, 0.15);
+  border: 2px solid rgba(79, 70, 229, 0.4);
   border-radius: 0.25rem;
   padding: 0.25rem 0.5rem;
   cursor: pointer;
-  color: var(--foreground);
+  color: rgb(79, 70, 229);
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.translate-button:hover {
+  background-color: rgba(79, 70, 229, 0.25);
+  transform: translateY(-1px);
 }
 
 .translate-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Textarea placeholder stilini güçlendir */
+.translation-box textarea::placeholder {
+  color: rgba(100, 116, 139, 0.8);
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+/* Textarea ve alanlar üzerine gelindiğinde efekt ekle */
+.translation-box textarea:hover {
+  background-color: rgba(248, 250, 252, 0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+  .translation-box {
+    background-color: rgba(30, 41, 59, 0.4);
+    border: 1px solid rgba(71, 85, 105, 0.5);
+  }
+  
+  .translation-box:focus-within {
+    border-color: rgba(139, 92, 246, 0.6);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+  }
+  
+  .translation-box textarea::placeholder {
+    color: rgba(203, 213, 225, 0.7);
+  }
+  
+  .translation-box textarea:hover {
+    background-color: rgba(30, 41, 59, 0.2);
+  }
+  
+  .record-button {
+    background-color: rgba(139, 92, 246, 0.2);
+    border-color: rgba(139, 92, 246, 0.5);
+    color: rgb(139, 92, 246);
+  }
+  
+  .record-button:hover {
+    background-color: rgba(139, 92, 246, 0.3);
+    border-color: rgba(139, 92, 246, 0.7);
+  }
+  
+  .record-button.recording {
+    background-color: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.5);
+  }
+  
+  .translate-button {
+    background-color: rgba(139, 92, 246, 0.2);
+    border-color: rgba(139, 92, 246, 0.5);
+    color: rgb(139, 92, 246);
+  }
+  
+  .translate-button:hover {
+    background-color: rgba(139, 92, 246, 0.3);
+  }
+}
+
+.dark .translation-box {
+  background-color: rgba(30, 41, 59, 0.4);
+  border: 1px solid rgba(71, 85, 105, 0.5);
+}
+
+.dark .translation-box:focus-within {
+  border-color: rgba(139, 92, 246, 0.6);
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+}
+
+.dark .translation-box textarea::placeholder {
+  color: rgba(203, 213, 225, 0.7);
+}
+
+.dark .translation-box textarea:hover {
+  background-color: rgba(30, 41, 59, 0.2);
+}
+
+.dark .record-button {
+  background-color: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.5);
+  color: rgb(139, 92, 246);
+}
+
+.dark .record-button:hover {
+  background-color: rgba(139, 92, 246, 0.3);
+  border-color: rgba(139, 92, 246, 0.7);
+}
+
+.dark .record-button.recording {
+  background-color: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.dark .translate-button {
+  background-color: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.5);
+  color: rgb(139, 92, 246);
+}
+
+.dark .translate-button:hover {
+  background-color: rgba(139, 92, 246, 0.3);
 }
 
 /* Rate Limit Helper Styles */
@@ -349,4 +505,135 @@ body {
 
 .helper-steps li {
   margin-bottom: 8px;
+}
+
+/* Dil seçim kutularının görünürlüğünü artır */
+.language-select {
+  position: relative;
+  background-color: rgba(241, 245, 249, 0.9);
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  font-weight: 500;
+  min-width: 120px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.language-select:hover {
+  background-color: rgba(226, 232, 240, 1);
+  border-color: rgba(148, 163, 184, 0.8);
+}
+
+.language-select:focus, 
+.language-select:focus-within {
+  border-color: rgba(99, 102, 241, 0.6);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+  outline: none;
+}
+
+.language-select-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 0.25rem;
+  background-color: white;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  z-index: 20;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.language-option {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.language-option:hover {
+  background-color: rgba(243, 244, 246, 1);
+}
+
+.language-option.selected {
+  background-color: rgba(239, 246, 255, 1);
+  color: rgba(79, 70, 229, 1);
+  font-weight: 500;
+}
+
+@media (prefers-color-scheme: dark) {
+  .language-select {
+    background-color: rgba(30, 41, 59, 0.4);
+    border-color: rgba(71, 85, 105, 0.5);
+    color: rgba(226, 232, 240, 0.9);
+  }
+  
+  .language-select:hover {
+    background-color: rgba(30, 41, 59, 0.6);
+    border-color: rgba(71, 85, 105, 0.7);
+  }
+  
+  .language-select:focus,
+  .language-select:focus-within {
+    border-color: rgba(139, 92, 246, 0.6);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+  }
+  
+  .language-select-dropdown {
+    background-color: rgba(30, 41, 59, 0.95);
+    border-color: rgba(71, 85, 105, 0.5);
+  }
+  
+  .language-option {
+    color: rgba(226, 232, 240, 0.9);
+  }
+  
+  .language-option:hover {
+    background-color: rgba(30, 41, 59, 0.7);
+  }
+  
+  .language-option.selected {
+    background-color: rgba(51, 65, 85, 0.5);
+    color: rgba(139, 92, 246, 1);
+  }
+}
+
+.dark .language-select {
+  background-color: rgba(30, 41, 59, 0.4);
+  border-color: rgba(71, 85, 105, 0.5);
+  color: rgba(226, 232, 240, 0.9);
+}
+
+.dark .language-select:hover {
+  background-color: rgba(30, 41, 59, 0.6);
+  border-color: rgba(71, 85, 105, 0.7);
+}
+
+.dark .language-select:focus,
+.dark .language-select:focus-within {
+  border-color: rgba(139, 92, 246, 0.6);
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+}
+
+.dark .language-select-dropdown {
+  background-color: rgba(30, 41, 59, 0.95);
+  border-color: rgba(71, 85, 105, 0.5);
+}
+
+.dark .language-option {
+  color: rgba(226, 232, 240, 0.9);
+}
+
+.dark .language-option:hover {
+  background-color: rgba(30, 41, 59, 0.7);
+}
+
+.dark .language-option.selected {
+  background-color: rgba(51, 65, 85, 0.5);
+  color: rgba(139, 92, 246, 1);
 }

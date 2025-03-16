@@ -1,15 +1,23 @@
+import apiUsageTracker from '@/lib/api/apiUsageTracker';
 import { AudioRecorderService } from '@/lib/api/audioRecorderService';
-import { transcribeAudio, translateLargeText } from '@/lib/api/translationService';
+import { canMakeAPIRequest, getRemainingCooldown } from '@/lib/api/rateLimitManager';
+import { translateText } from '@/lib/api/requestManager';
+import translateLargeText from '@/lib/api/translateLargeText';
+import translationCache from '@/lib/api/translationCache';
+import { transcribeAudio } from '@/lib/api/translationService';
 import SupportedLanguages from '@/lib/data/languages';
+import { useFlags } from '@/lib/hooks/useFlags';
 import { useLocalization } from '@/lib/hooks/useLocalization';
 import { useTranslation } from '@/lib/hooks/useTranslation';
 import { CopyIcon, SpeakerIcon, SpinnerIcon, TranslateIcon, XMarkIcon } from '@/lib/icons';
 import { checkAudioQuality, optimizeAudioForAPI } from '@/lib/utils/audioUtils';
-import { apiUsageTracker, translationCache } from '@/lib/utils/cacheUtils';
 import { MicrophoneIcon, PauseIcon } from '@heroicons/react/24/solid';
+import { track } from '@vercel/analytics';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
+import { ApiLimitManager } from './ApiLimitManager';
 import PermissionHelper from './PermissionHelper';
+import { ProgressiveTranslation } from './ProgressiveTranslation';
 import RateLimitHelper from './RateLimitHelper';
 
 // Tarayıcı API'lerini tutan değişkenler
@@ -47,7 +55,14 @@ const checkSpeechRecognitionAvailability = (): { available: boolean; reason?: st
 
 export const TranslationPanel: React.FC = () => {
   const { t, locale, changeLanguage } = useTranslation();
-  const { t: localizationT } = useLocalization();
+  const { t: localizationT, locale: localizationLocale } = useLocalization();
+  
+  // Feature Flags'i yükle
+  const flags = useFlags(['progressive-translation', 'smart-cooldown']);
+  
+  // Locale değişimini takip etmek için ref kullanın
+  const prevLocaleRef = useRef(locale || localizationLocale);
+  const [forceUpdate, setForceUpdate] = useState<boolean>(false);
   
   // Configuration and state
   const [sourceLanguage, setSourceLanguage] = useState('en');
@@ -545,7 +560,7 @@ export const TranslationPanel: React.FC = () => {
         const cachedTranslation = await translationCache.get(text, fromLang, toLang);
         if (cachedTranslation) {
           setTargetText(cachedTranslation.translatedText);
-          setConfidence(cachedTranslation.confidence);
+          setConfidence(cachedTranslation.confidence || 0);
           setIsTranslating(false);
           console.log('Çeviri önbellekten alındı');
           return;
@@ -558,7 +573,7 @@ export const TranslationPanel: React.FC = () => {
       const result = await translateLargeText(text, fromLang, toLang);
       
       setTargetText(result.translatedText);
-      setConfidence(result.confidence);
+      setConfidence(result.confidence || 0);
       
       // Başarılı çeviriyi önbelleğe kaydet
       try {
@@ -684,6 +699,122 @@ export const TranslationPanel: React.FC = () => {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   }, [apiCooldownEndTime]);
 
+  // Locale değişimini izle ve gerekirse diğer hook'un locale'ini güncelle
+  useEffect(() => {
+    const currentLocale = locale || localizationLocale;
+    
+    // Eğer locale değiştiyse ve farklı hook'lar kullanılıyorsa
+    if (currentLocale !== prevLocaleRef.current) {
+      prevLocaleRef.current = currentLocale;
+      
+      // useLocalization ile değişim olduysa, useTranslation'ı da güncelle
+      if (locale !== currentLocale && changeLanguage) {
+        changeLanguage(currentLocale);
+      }
+    }
+    
+    // Dil değişikliklerini dinle
+    const handleLocaleChange = (e: Event) => {
+      const newLocale = (e as CustomEvent).detail?.locale;
+      if (newLocale && changeLanguage) {
+        changeLanguage(newLocale);
+        prevLocaleRef.current = newLocale;
+        
+        // Forceupdate için state güncelleme - bileşeni yeniden render eder
+        setForceUpdate(prev => !prev);
+      }
+    };
+    
+    window.addEventListener('app-locale-changed', handleLocaleChange);
+    window.addEventListener('localeChange', handleLocaleChange);
+    
+    return () => {
+      window.removeEventListener('app-locale-changed', handleLocaleChange);
+      window.removeEventListener('localeChange', handleLocaleChange);
+    };
+  }, [locale, localizationLocale, changeLanguage]);
+  
+  // Birleştirilmiş çeviri fonksiyonu
+  const getLocalizedText = useCallback((key: any, ...args: any[]) => {
+    // useTranslation ve useLocalization'dan gelen çeviri fonksiyonlarını birleştir
+    return t(key, ...args) || localizationT(key, ...args) || key;
+  }, [t, localizationT]);
+
+  // Ana çeviri işlemi
+  const handleTranslate = async () => {
+    if (!sourceText || sourceText.trim() === '') return;
+    
+    try {
+      setIsTranslating(true);
+      setErrorMessage('');
+      
+      // Analitik takibi
+      track('Translation Started', {
+        sourceLength: sourceText.length,
+        sourceLang: sourceLanguage,
+        targetLang: targetLanguage,
+        method: 'manual'
+      });
+      
+      // API kullanım sınırlarını kontrol et
+      if (!canMakeAPIRequest()) {
+        setShowRateLimitHelper(true);
+        setApiCooldownEndTime(Date.now() + getRemainingCooldown());
+        throw new Error(getLocalizedText('api_rate_limit_exceeded'));
+      }
+      
+      // Çeviri seçeneğini kontrol et (Progressive veya tek seferde)
+      const useProgressiveTranslation = flags['progressive-translation'];
+      
+      if (useProgressiveTranslation) {
+        // ProgressiveTranslation bileşeni ile ilerlemeyi yönetiyoruz
+        // Bu kısımda çeviri işlemi yapılmıyor, bileşen tarafından yönetiliyor
+        setTargetText(''); // Başlangıçta temizle
+      } else {
+        // Tek seferde çeviri yap
+        const result = await translateText(sourceText, sourceLanguage, targetLanguage);
+        setTargetText(result.text);
+        
+        // Güven skorunu ayarla (varsa)
+        if (result.confidence) {
+          setConfidence(result.confidence);
+        }
+      }
+      
+      // Başarılı çeviri analitik takibi
+      track('Translation Completed', {
+        sourceLength: sourceText.length,
+        resultLength: targetText.length,
+        sourceLang: sourceLanguage,
+        targetLang: targetLanguage
+      });
+    } catch (error) {
+      console.error('Translation error:', error);
+      
+      if (error instanceof Error) {
+        // Analitik takibi - hata durumu
+        track('Translation Error', {
+          errorMessage: error.message,
+          sourceLang: sourceLanguage,
+          targetLang: targetLanguage
+        });
+        
+        // API hata mesajını localize et
+        if (error.message.includes('rate limit') || error.message.includes('quota')) {
+          setShowRateLimitHelper(true);
+          setApiCooldownEndTime(Date.now() + getRemainingCooldown());
+          setErrorMessage(getLocalizedText('api_rate_limit_exceeded'));
+        } else {
+          setErrorMessage(error.message);
+        }
+      } else {
+        setErrorMessage(getLocalizedText('translation_error', String(error)));
+      }
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
   return (
     <div className="translation-panel">
       {/* Source text area */}
@@ -725,7 +856,7 @@ export const TranslationPanel: React.FC = () => {
         <textarea 
           value={sourceText}
           onChange={handleSourceTextChange}
-          placeholder={t('enter_source_text')}
+          placeholder={getLocalizedText('enter_source_text')}
           disabled={isRecording || isTranslating}
         />
         
@@ -787,11 +918,28 @@ export const TranslationPanel: React.FC = () => {
           </button>
         </div>
         
-        <textarea 
-          value={targetText}
-          readOnly 
-          placeholder={t('translation_will_appear_here')}
-        />
+        {flags && flags['progressive-translation'] ? (
+          <ProgressiveTranslation 
+            text={sourceText}
+            sourceLang={sourceLanguage}
+            targetLang={targetLanguage}
+            onTranslating={setIsTranslating}
+            onProgress={(progress) => {
+              // İlerleme durumunu işleyebilirsiniz
+            }}
+            onComplete={(translation) => {
+              setTargetText(translation);
+            }}
+          />
+        ) : (
+          <textarea
+            value={targetText}
+            readOnly
+            placeholder={getLocalizedText('translation_will_appear_here')}
+            className="translation-text"
+            aria-label={getLocalizedText('translation')}
+          />
+        )}
         
         <div className="actions">
           <button 
@@ -858,13 +1006,15 @@ export const TranslationPanel: React.FC = () => {
       )}
       
       {/* Rate Limit Helper */}
-      {showRateLimitHelper && (
+      {showRateLimitHelper ? (
         <RateLimitHelper
+          onClose={() => setShowRateLimitHelper(false)}
           cooldownEndTime={apiCooldownEndTime}
           dailyUsage={apiUsageInfo.dailyRequests}
           dailyLimit={apiUsageInfo.dailyRequests + apiUsageInfo.dailyRemaining}
-          onClose={() => setShowRateLimitHelper(false)}
         />
+      ) : (
+        <ApiLimitManager />
       )}
     </div>
   );

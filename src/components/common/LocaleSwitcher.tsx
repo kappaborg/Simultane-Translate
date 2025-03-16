@@ -65,6 +65,20 @@ const LocaleSwitcher: React.FC = () => {
   const handleLocaleChange = (localeCode: LocaleCode) => {
     if (localeCode !== locale) {
       setLocale(localeCode);
+      
+      // Dil değişikliğini bir özel olay olarak yayınla - tüm bileşenlerin haberdar olmasını sağlar
+      if (typeof window !== 'undefined') {
+        // localStorage üzerinden de bilgiyi tazelemek için
+        localStorage.setItem('app_locale', localeCode);
+        
+        // Uygulama genelinde bir olay yayınla
+        window.dispatchEvent(new CustomEvent('app-locale-changed', {
+          detail: { locale: localeCode }
+        }));
+        
+        // Kullanıcı geri bildirimini iyileştirmek için (isteğe bağlı)
+        console.log(`Language changed to: ${localeCode}`);
+      }
     }
     setIsOpen(false);
   };

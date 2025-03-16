@@ -1,3 +1,4 @@
+import { useLocalization } from '@/lib/hooks/useLocalization';
 import { useTranslation } from '@/lib/hooks/useTranslation';
 import { XMarkIcon } from '@/lib/icons';
 import React, { useEffect, useState } from 'react';
@@ -15,7 +16,14 @@ const RateLimitHelper: React.FC<RateLimitHelperProps> = ({
   dailyLimit,
   onClose
 }) => {
-  const { t } = useTranslation();
+  // Use both hooks to ensure compatibility with the rest of the application
+  const { t: translationT, locale: translationLocale } = useTranslation();
+  const { t: localizationT, locale: localizationLocale } = useLocalization();
+  
+  // Use the first non-null/undefined locale and translation function
+  const locale = translationLocale || localizationLocale || 'en';
+  const t = translationT || localizationT || ((key: any) => key);
+  
   const [timeRemaining, setTimeRemaining] = useState<string>('');
   
   // Calculate remaining time

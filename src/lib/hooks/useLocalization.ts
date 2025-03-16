@@ -40,6 +40,14 @@ export const useLocalization = () => {
       // Set locale in store
       setLocale(newLocale);
       
+      // Dispatch a global event for components to listen for locale changes
+      window.dispatchEvent(new CustomEvent('app-locale-changed', {
+        detail: { locale: newLocale }
+      }));
+      
+      // Also update localStorage directly to ensure immediate sync
+      localStorage.setItem('app_locale', newLocale);
+      
       // Remove existing announcement if it exists
       if (announcementRef.current && document.body.contains(announcementRef.current)) {
         document.body.removeChild(announcementRef.current);
