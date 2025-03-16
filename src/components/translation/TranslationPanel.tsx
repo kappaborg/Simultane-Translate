@@ -140,14 +140,6 @@ export const TranslationPanel: React.FC = () => {
     if (recognitionRef.current) {
       try {
         isRecognitionActive.current = false;
-        
-        // Clear any pause detection timers
-        const recognition = recognitionRef.current as any;
-        if (recognition.pauseTimer) {
-          clearTimeout(recognition.pauseTimer);
-          recognition.pauseTimer = null;
-        }
-        
         recognitionRef.current.onresult = null;
         recognitionRef.current.onerror = null;
         recognitionRef.current.onend = null;
@@ -243,6 +235,7 @@ export const TranslationPanel: React.FC = () => {
     // Error türüne göre uygun mesajı göster
     switch (event.error) {
       case 'not-allowed':
+      case 'permission-denied':
         setPermissionType('speech-recognition');
         setShowPermissionHelper(true);
         setErrorMessage(t('speech_recognition_error_mic_denied'));
@@ -291,20 +284,6 @@ export const TranslationPanel: React.FC = () => {
         console.warn('Dil ayarlama hatası:', e);
       }
       
-      // Add variables to track speech activity
-      let lastSpeechTime = Date.now();
-      let pauseTimer: NodeJS.Timeout | null = null;
-      
-      // Function to trigger translation during pause
-      const checkForPause = () => {
-        if (sourceText.trim() !== '') {
-          translateSourceText(sourceText, sourceLanguage, targetLanguage);
-        }
-      };
-      
-      // Store pauseTimer on the recognition object for cleanup
-      (recognition as any).pauseTimer = pauseTimer;
-      
       // Handle recognition results
       recognition.onresult = (event: SpeechRecognitionEvent) => {
         const last = event.results.length - 1;
@@ -312,34 +291,12 @@ export const TranslationPanel: React.FC = () => {
         const transcript = result[0].transcript;
         const isFinal = result.isFinal;
         
-        // Update last speech time
-        lastSpeechTime = Date.now();
-        
-        // Clear any pending pause timer
-        if (pauseTimer) {
-          clearTimeout(pauseTimer);
-          pauseTimer = null;
-        }
-        
-        // Set a new pause timer (3 seconds of silence will trigger translation)
-        pauseTimer = setTimeout(checkForPause, 3000);
-        
-        // Update the pauseTimer reference on the recognition object
-        (recognition as any).pauseTimer = pauseTimer;
-        
         if (isFinal) {
           // Final sonuç için kaynak metni güncelle (mevcut metne ekle)
           setSourceText(prevText => {
             // Eğer önceki metin boşsa veya nokta ile bitiyorsa
             const separator = prevText && !prevText.trim().endsWith('.') ? '. ' : ' ';
-            const updatedText = prevText + (prevText ? separator : '') + transcript;
-            
-            // Otomatik çeviri yap
-            setTimeout(() => {
-              translateSourceText(updatedText, sourceLanguage, targetLanguage);
-            }, 100);
-            
-            return updatedText;
+            return prevText + (prevText ? separator : '') + transcript;
           });
         }
       };
@@ -667,7 +624,7 @@ export const TranslationPanel: React.FC = () => {
   // Handle clear cache button click
   const handleClearCache = useCallback(async () => {
     try {
-      await translationCache.clear();
+      await translationCache.clearCache();
       toast.success(t('cache_cleared'));
     } catch (error) {
       console.error('Önbellek temizleme hatası:', error);
